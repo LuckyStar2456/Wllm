@@ -1,0 +1,9 @@
+/build/
+/vendor/
+/models/
+__pycache__/
+/reports/*
+!/reports/prototype-validation.md
+!/reports/environment.json
+/configs/local.json
+*.user

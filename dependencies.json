@@ -1,0 +1,9 @@
+{
+  "llama.cpp": {
+    "url": "https://github.com/ggml-org/llama.cpp.git",
+    "commit": "f2918cabbffe8abf8e2a90c1c089085fa116c2cf",
+    "license": "MIT",
+    "backend": "CPU AVX2",
+    "retrieved": "2026-10-10"
+  }
+}
