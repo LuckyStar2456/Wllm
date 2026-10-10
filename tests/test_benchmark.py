@@ -9,6 +9,13 @@ SPEC.loader.exec_module(benchmark)
 
 
 class SummaryTests(unittest.TestCase):
+    def test_diagnostics_do_not_enter_performance_aggregates(self):
+        result = benchmark.summarize([
+            {"case": "a", "profile": "b", "ok": True, "diagnostic": True,
+             "metrics": {"elapsed_s": 0.1, "decode_average_tps": 1000}},
+        ])["a/b"]
+        self.assertEqual(result, {"samples": 0, "failures": 1, "metrics": {}})
+
     def test_failed_runs_are_not_fast_successes(self):
         result = benchmark.summarize([
             {"case": "a", "profile": "b", "ok": True, "metrics": {"elapsed_s": 10, "decode_average_tps": None}},

@@ -7,5 +7,7 @@ __pycache__/
 !/reports/environment.json
 !/reports/e2-validation.md
 !/reports/e2-summary.json
+!/reports/e2-followup.md
+!/reports/e2-followup.json
 /configs/local.json
 *.user

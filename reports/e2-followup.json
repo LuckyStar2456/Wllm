@@ -1,0 +1,613 @@
+{
+  "date": "2026-10-10",
+  "base_git_commit": "9d89de43924adc2763d83ec3d1ae7d024864cb08",
+  "llama_commit": "f2918cabbffe8abf8e2a90c1c089085fa116c2cf",
+  "model_sha256": "0f55ce3d5a059e9e84493ed0554d78b8634d5064efcc8dc0a910f283ecaf3c34",
+  "screening_binary_sha256": {
+    "baseline": "ae34243af594c630b4fe673ae73c27b75c81f573112b83a66badd65ef664b5aa",
+    "last-only": "ae34243af594c630b4fe673ae73c27b75c81f573112b83a66badd65ef664b5aa"
+  },
+  "final_binary_sha256": "49606781efdb4b242f2688c82926e51a526617aa712c3cd92e7c1db4f036bdd0",
+  "build_note": "Screening preceded diagnostic display/error-handling polish; final binary separately rebuilt and regression-tested. No default optimization promoted.",
+  "config": {
+    "context": 4096,
+    "threads": 4,
+    "batch": 128,
+    "temperature": 1.0,
+    "top_k": 20,
+    "top_p": 0.95,
+    "min_p": 0.0,
+    "repeat_penalty": 1.0,
+    "presence_penalty": 1.5,
+    "frequency_penalty": 0.0,
+    "thinking": true
+  },
+  "screening": {
+    "repeats": 1,
+    "order": "baseline then last-only per case, two warmups, serial processes",
+    "limitations": "Synthetic workloads, uncontrolled OS cache/background/thermal state; no reliable speedup or tail-latency claim.",
+    "power_scheme_observed": "ASUS Recommended; no system power or driver changes",
+    "runs": [
+      {
+        "case": "long",
+        "profile": "baseline",
+        "ok": true,
+        "answer_ok": null,
+        "tokens_equal_reference": true,
+        "prompt_sha256": "8a9907a8c0a35a5191645c0b9bf94f8b5505d24d553b7d7b314fb4209f04a3a7",
+        "metrics": {
+          "stage": "finished",
+          "end_reason": "max_tokens",
+          "error": "",
+          "elapsed_s": 295.6818629,
+          "model_reused": false,
+          "load_s": 1.2356344,
+          "input_tokens": 3378,
+          "input_processed": 3378,
+          "input_reused": 0,
+          "prefill_batches": 27,
+          "prefill_logits_batches": 27,
+          "prefill_s": 289.5510543,
+          "prefill_tps": 11.666336384671213,
+          "ttft_s": 290.8719611,
+          "output_tokens": 16,
+          "decode_average_tps": 3.793691566401099,
+          "decode_window_tps": 2.5,
+          "decode_window_s": 2.0,
+          "generation_s": 4.809901799999977,
+          "working_set_bytes": 12374016,
+          "private_bytes": 5734400,
+          "system_available_bytes": 9525248000,
+          "sampled_peak_working_set_bytes": 5288697856
+        }
+      },
+      {
+        "case": "long",
+        "profile": "last-only",
+        "ok": true,
+        "answer_ok": null,
+        "tokens_equal_reference": true,
+        "prompt_sha256": "8a9907a8c0a35a5191645c0b9bf94f8b5505d24d553b7d7b314fb4209f04a3a7",
+        "metrics": {
+          "stage": "finished",
+          "end_reason": "max_tokens",
+          "error": "",
+          "elapsed_s": 248.662688,
+          "model_reused": false,
+          "load_s": 1.420446,
+          "input_tokens": 3378,
+          "input_processed": 3378,
+          "input_reused": 0,
+          "prefill_batches": 27,
+          "prefill_logits_batches": 1,
+          "prefill_s": 241.93005430000002,
+          "prefill_tps": 13.962713354377978,
+          "ttft_s": 243.4555751,
+          "output_tokens": 16,
+          "decode_average_tps": 3.4956141926969915,
+          "decode_window_tps": 1.0,
+          "decode_window_s": 2.0,
+          "generation_s": 5.2071128999999985,
+          "working_set_bytes": 12058624,
+          "private_bytes": 5337088,
+          "system_available_bytes": 8935690240,
+          "sampled_peak_working_set_bytes": 5297557504
+        }
+      },
+      {
+        "case": "long-output",
+        "profile": "baseline",
+        "ok": true,
+        "answer_ok": null,
+        "tokens_equal_reference": true,
+        "prompt_sha256": "569d78d1a78db3b40d244573e916c871c16610b61cbe9951b38bf532130b1eb2",
+        "metrics": {
+          "stage": "finished",
+          "end_reason": "max_tokens",
+          "error": "",
+          "elapsed_s": 32.7529137,
+          "model_reused": false,
+          "load_s": 1.2622909,
+          "input_tokens": 49,
+          "input_processed": 49,
+          "input_reused": 0,
+          "prefill_batches": 1,
+          "prefill_logits_batches": 1,
+          "prefill_s": 4.605269,
+          "prefill_tps": 10.639986502417123,
+          "ttft_s": 5.9594826,
+          "output_tokens": 128,
+          "decode_average_tps": 4.887288712743992,
+          "decode_window_tps": 3.0,
+          "decode_window_s": 2.0,
+          "generation_s": 26.7934311,
+          "working_set_bytes": 12083200,
+          "private_bytes": 5586944,
+          "system_available_bytes": 8409985024,
+          "sampled_peak_working_set_bytes": 5254705152
+        }
+      },
+      {
+        "case": "long-output",
+        "profile": "last-only",
+        "ok": true,
+        "answer_ok": null,
+        "tokens_equal_reference": true,
+        "prompt_sha256": "569d78d1a78db3b40d244573e916c871c16610b61cbe9951b38bf532130b1eb2",
+        "metrics": {
+          "stage": "finished",
+          "end_reason": "max_tokens",
+          "error": "",
+          "elapsed_s": 32.2238191,
+          "model_reused": false,
+          "load_s": 1.1732518,
+          "input_tokens": 49,
+          "input_processed": 49,
+          "input_reused": 0,
+          "prefill_batches": 1,
+          "prefill_logits_batches": 1,
+          "prefill_s": 4.5200375,
+          "prefill_tps": 10.840618025846025,
+          "ttft_s": 5.7780974,
+          "output_tokens": 128,
+          "decode_average_tps": 4.953955789478661,
+          "decode_window_tps": 3.0,
+          "decode_window_s": 2.0,
+          "generation_s": 26.4457217,
+          "working_set_bytes": 12386304,
+          "private_bytes": 5734400,
+          "system_available_bytes": 8954093568,
+          "sampled_peak_working_set_bytes": 5254901760
+        }
+      },
+      {
+        "case": "long-retrieval",
+        "profile": "baseline",
+        "ok": true,
+        "answer_ok": true,
+        "tokens_equal_reference": true,
+        "prompt_sha256": "79b8a2053f6de4e7edbe1307f6ed266286ea25ba8bed59319bbe0177dd82b2bf",
+        "metrics": {
+          "stage": "finished",
+          "end_reason": "eos",
+          "error": "",
+          "elapsed_s": 343.9175064,
+          "model_reused": false,
+          "load_s": 1.5996977000000001,
+          "input_tokens": 3414,
+          "input_processed": 3414,
+          "input_reused": 0,
+          "prefill_batches": 27,
+          "prefill_logits_batches": 27,
+          "prefill_s": 244.6451122,
+          "prefill_tps": 13.954907863472942,
+          "ttft_s": 246.341919,
+          "output_tokens": 398,
+          "decode_average_tps": 4.116731256607359,
+          "decode_window_tps": 2.0,
+          "decode_window_s": 2.0,
+          "generation_s": 97.57558739999999,
+          "working_set_bytes": 12521472,
+          "private_bytes": 6426624,
+          "system_available_bytes": 8745930752,
+          "sampled_peak_working_set_bytes": 5292433408
+        }
+      },
+      {
+        "case": "long-retrieval",
+        "profile": "last-only",
+        "ok": true,
+        "answer_ok": true,
+        "tokens_equal_reference": true,
+        "prompt_sha256": "79b8a2053f6de4e7edbe1307f6ed266286ea25ba8bed59319bbe0177dd82b2bf",
+        "metrics": {
+          "stage": "finished",
+          "end_reason": "eos",
+          "error": "",
+          "elapsed_s": 379.8625547,
+          "model_reused": false,
+          "load_s": 1.2420818,
+          "input_tokens": 3414,
+          "input_processed": 3414,
+          "input_reused": 0,
+          "prefill_batches": 27,
+          "prefill_logits_batches": 1,
+          "prefill_s": 280.07396059999996,
+          "prefill_tps": 12.189637311109601,
+          "ttft_s": 281.4003076,
+          "output_tokens": 398,
+          "decode_average_tps": 4.077025222638748,
+          "decode_window_tps": 2.0,
+          "decode_window_s": 2.0,
+          "generation_s": 98.46224709999996,
+          "working_set_bytes": 12181504,
+          "private_bytes": 5431296,
+          "system_available_bytes": 9526624256,
+          "sampled_peak_working_set_bytes": 5298274304
+        }
+      }
+    ]
+  },
+  "profiling": {
+    "raw_local_directory": "reports/profile-check-1791615426746803200",
+    "absolute_tolerance": 1e-05,
+    "relative_tolerance": 1e-05,
+    "runs": [
+      {
+        "mode": "plain",
+        "max_abs_delta": 0.0,
+        "logits_close": true,
+        "tokens_equal": true,
+        "profile": null
+      },
+      {
+        "mode": "profile",
+        "max_abs_delta": 0.0,
+        "logits_close": true,
+        "tokens_equal": true,
+        "profile": {
+          "diagnostic": true,
+          "operator_callbacks": false,
+          "timing_scope": "wall time; process calls include backend synchronization; partial calls included on failure",
+          "operator_warning": "Callbacks split the graph and may inhibit fusion; not production kernel timings",
+          "stages": [
+            {
+              "name": "decode_process",
+              "calls": 15,
+              "seconds": 3.6701325000000007
+            },
+            {
+              "name": "prefill_process",
+              "calls": 1,
+              "seconds": 3.4322781
+            },
+            {
+              "name": "render_and_write",
+              "calls": 16,
+              "seconds": 0.0007257
+            },
+            {
+              "name": "sample",
+              "calls": 16,
+              "seconds": 0.0297149
+            }
+          ],
+          "operators": []
+        }
+      },
+      {
+        "mode": "profile-ops",
+        "max_abs_delta": 0.0,
+        "logits_close": true,
+        "tokens_equal": true,
+        "profile": {
+          "diagnostic": true,
+          "operator_callbacks": true,
+          "timing_scope": "wall time; process calls include backend synchronization; partial calls included on failure",
+          "operator_warning": "Callbacks split the graph and may inhibit fusion; not production kernel timings",
+          "stages": [
+            {
+              "name": "decode_process",
+              "calls": 15,
+              "seconds": 7.790187800000001
+            },
+            {
+              "name": "prefill_process",
+              "calls": 1,
+              "seconds": 4.2051131
+            },
+            {
+              "name": "render_and_write",
+              "calls": 16,
+              "seconds": 0.0006682
+            },
+            {
+              "name": "sample",
+              "calls": 16,
+              "seconds": 0.0262295
+            }
+          ],
+          "operators": [
+            {
+              "name": "decode/ADD/f32",
+              "calls": 1320,
+              "seconds": 0.4528914
+            },
+            {
+              "name": "decode/CONCAT/f32",
+              "calls": 360,
+              "seconds": 0.13633829999999994
+            },
+            {
+              "name": "decode/CONT/f32",
+              "calls": 240,
+              "seconds": 0.07904370000000001
+            },
+            {
+              "name": "decode/CPY/f32",
+              "calls": 1440,
+              "seconds": 0.2607966000000016
+            },
+            {
+              "name": "decode/DUP/f32",
+              "calls": 15,
+              "seconds": 0.0077305
+            },
+            {
+              "name": "decode/GATED_DELTA_NET/f32",
+              "calls": 360,
+              "seconds": 0.16830859999999986
+            },
+            {
+              "name": "decode/GET_ROWS/f32",
+              "calls": 750,
+              "seconds": 0.07002470000000005
+            },
+            {
+              "name": "decode/GET_ROWS/q4_K",
+              "calls": 30,
+              "seconds": 0.0003790999999999999
+            },
+            {
+              "name": "decode/GLU/f32",
+              "calls": 480,
+              "seconds": 0.17059119999999994
+            },
+            {
+              "name": "decode/MUL/f32",
+              "calls": 2415,
+              "seconds": 0.7841216999999996
+            },
+            {
+              "name": "decode/MUL_MAT/f16",
+              "calls": 240,
+              "seconds": 0.10115130000000003
+            },
+            {
+              "name": "decode/MUL_MAT/q4_K",
+              "calls": 3360,
+              "seconds": 3.238795799999999
+            },
+            {
+              "name": "decode/MUL_MAT/q6_K",
+              "calls": 375,
+              "seconds": 0.9438785999999998
+            },
+            {
+              "name": "decode/PERMUTE/f16",
+              "calls": 240,
+              "seconds": 0.0003097999999999996
+            },
+            {
+              "name": "decode/PERMUTE/f32",
+              "calls": 240,
+              "seconds": 0.0006508999999999999
+            },
+            {
+              "name": "decode/RESHAPE/f16",
+              "calls": 120,
+              "seconds": 0.00014670000000000004
+            },
+            {
+              "name": "decode/RESHAPE/f32",
+              "calls": 4440,
+              "seconds": 0.014483699999999987
+            },
+            {
+              "name": "decode/RMS_NORM/f32",
+              "calls": 2295,
+              "seconds": 0.7752975999999979
+            },
+            {
+              "name": "decode/ROPE/f32",
+              "calls": 240,
+              "seconds": 0.08043629999999997
+            },
+            {
+              "name": "decode/SCALE/f32",
+              "calls": 1440,
+              "seconds": 0.004612000000000024
+            },
+            {
+              "name": "decode/SET_ROWS/f32",
+              "calls": 255,
+              "seconds": 0.003795599999999997
+            },
+            {
+              "name": "decode/SOFT_MAX/f32",
+              "calls": 120,
+              "seconds": 0.04237830000000001
+            },
+            {
+              "name": "decode/SSM_CONV/f32",
+              "calls": 360,
+              "seconds": 0.12720629999999994
+            },
+            {
+              "name": "decode/TRANSPOSE/f32",
+              "calls": 360,
+              "seconds": 0.0005327999999999974
+            },
+            {
+              "name": "decode/UNARY/f32",
+              "calls": 1560,
+              "seconds": 0.2623683999999993
+            },
+            {
+              "name": "decode/VIEW/f16",
+              "calls": 240,
+              "seconds": 0.00034169999999999947
+            },
+            {
+              "name": "decode/VIEW/f32",
+              "calls": 6240,
+              "seconds": 0.013973199999999776
+            },
+            {
+              "name": "prefill/ADD/f32",
+              "calls": 88,
+              "seconds": 0.06645659999999999
+            },
+            {
+              "name": "prefill/CONCAT/f32",
+              "calls": 24,
+              "seconds": 0.0233726
+            },
+            {
+              "name": "prefill/CONT/f32",
+              "calls": 16,
+              "seconds": 0.012218999999999999
+            },
+            {
+              "name": "prefill/CPY/f32",
+              "calls": 96,
+              "seconds": 0.021831000000000003
+            },
+            {
+              "name": "prefill/DUP/f32",
+              "calls": 1,
+              "seconds": 0.0007461
+            },
+            {
+              "name": "prefill/GATED_DELTA_NET/f32",
+              "calls": 24,
+              "seconds": 0.048803700000000005
+            },
+            {
+              "name": "prefill/GET_ROWS/f32",
+              "calls": 50,
+              "seconds": 0.004251300000000001
+            },
+            {
+              "name": "prefill/GET_ROWS/q4_K",
+              "calls": 2,
+              "seconds": 0.0001855
+            },
+            {
+              "name": "prefill/GLU/f32",
+              "calls": 32,
+              "seconds": 0.0191161
+            },
+            {
+              "name": "prefill/MUL/f32",
+              "calls": 161,
+              "seconds": 0.0676187
+            },
+            {
+              "name": "prefill/MUL_MAT/f16",
+              "calls": 16,
+              "seconds": 0.020273499999999996
+            },
+            {
+              "name": "prefill/MUL_MAT/q4_K",
+              "calls": 224,
+              "seconds": 3.0394903
+            },
+            {
+              "name": "prefill/MUL_MAT/q6_K",
+              "calls": 25,
+              "seconds": 0.7314815
+            },
+            {
+              "name": "prefill/PERMUTE/f16",
+              "calls": 16,
+              "seconds": 2.5300000000000005e-05
+            },
+            {
+              "name": "prefill/PERMUTE/f32",
+              "calls": 16,
+              "seconds": 6.92e-05
+            },
+            {
+              "name": "prefill/RESHAPE/f16",
+              "calls": 8,
+              "seconds": 1.24e-05
+            },
+            {
+              "name": "prefill/RESHAPE/f32",
+              "calls": 296,
+              "seconds": 0.0016658999999999997
+            },
+            {
+              "name": "prefill/RMS_NORM/f32",
+              "calls": 153,
+              "seconds": 0.07074509999999998
+            },
+            {
+              "name": "prefill/ROPE/f32",
+              "calls": 16,
+              "seconds": 0.010052399999999998
+            },
+            {
+              "name": "prefill/SCALE/f32",
+              "calls": 96,
+              "seconds": 0.004891199999999999
+            },
+            {
+              "name": "prefill/SET_ROWS/f32",
+              "calls": 17,
+              "seconds": 0.0044784000000000004
+            },
+            {
+              "name": "prefill/SOFT_MAX/f32",
+              "calls": 8,
+              "seconds": 0.0036524
+            },
+            {
+              "name": "prefill/SSM_CONV/f32",
+              "calls": 24,
+              "seconds": 0.017483799999999997
+            },
+            {
+              "name": "prefill/TRANSPOSE/f32",
+              "calls": 24,
+              "seconds": 4.26e-05
+            },
+            {
+              "name": "prefill/UNARY/f32",
+              "calls": 104,
+              "seconds": 0.0280836
+            },
+            {
+              "name": "prefill/VIEW/f16",
+              "calls": 16,
+              "seconds": 3.28e-05
+            },
+            {
+              "name": "prefill/VIEW/f32",
+              "calls": 416,
+              "seconds": 0.0012768000000000018
+            }
+          ]
+        }
+      }
+    ]
+  },
+  "weight_repacking": {
+    "decision": "rejected; disabled by default; research only",
+    "atol": 0.001,
+    "rtol": 0.0001,
+    "max_kl": 1e-06,
+    "candidate_repacking": true,
+    "results": [
+      {
+        "prompt_index": 0,
+        "max_abs_logit_delta": 1.5627069473266602,
+        "logits_close": false,
+        "softmax_kl": 0.0005562684494296119,
+        "tokens_equal": true,
+        "output_equal": true,
+        "vocabulary_size": 248320
+      }
+    ],
+    "diagnostic_sampled_peak_working_set_bytes": 8667529216
+  },
+  "default_decision": "AVX2, 4 threads, batch 128; persistent_threadpool/prefill_last_only/cpu_weight_repacking remain false; profiling off",
+  "validation": {
+    "native_checks": 28,
+    "integration_tests": 8,
+    "profiling_tests": 3,
+    "benchmark_aggregation_tests": 2,
+    "upstream_greedy_16_tokens_equal": true
+  }
+}

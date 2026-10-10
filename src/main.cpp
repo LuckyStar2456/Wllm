@@ -4,6 +4,7 @@
 #include <io.h>
 #include <intrin.h>
 #include "core.h"
+#include "profile.h"
 #include "terminal.h"
 #include "llama.h"
 #include "gguf.h"
@@ -59,6 +60,7 @@ struct State {
     Terminal terminal;
     Config config;
     Metrics metrics;
+    Profile profile;
     json identity = json::object();
     Clock::time_point start = Clock::now();
     std::mutex mutex;
@@ -240,7 +242,7 @@ static std::string run(State & s, const std::string & prompt, const std::string 
     { std::lock_guard<std::mutex> lock(s.mutex); s.metrics.stage="loading"; s.metrics.load_start=s.now(); }
     llama_model_params mp=llama_model_default_params();
     mp.n_gpu_layers=0; mp.load_mode=LLAMA_LOAD_MODE_MMAP; mp.progress_callback=load_progress; mp.progress_callback_user_data=&s;
-    mp.use_extra_bufts=false;
+    mp.use_extra_bufts=c.cpu_weight_repacking;
     mp.vocab_only=!inspect_path.empty();
     if (!model) model.reset(llama_model_load_from_file(c.model.c_str(),mp));
     if (!model) {
@@ -279,6 +281,7 @@ static std::string run(State & s, const std::string & prompt, const std::string 
     cp.flash_attn_type=LLAMA_FLASH_ATTN_TYPE_DISABLED;
     cp.offload_kqv=false; cp.op_offload=false; cp.no_perf=false;
     cp.abort_callback=abort_callback; cp.abort_callback_data=&s;
+    if (s.profile.operators) { cp.cb_eval=Profile::callback; cp.cb_eval_user_data=&s.profile; }
     std::unique_ptr<llama_context,decltype(&llama_free)> ctx(llama_init_from_model(model.get(),cp),llama_free);
     if (!ctx) throw std::runtime_error("Context allocation failed; requested context was not reduced");
     if (llama_n_ctx(ctx.get()) != uint32_t(c.context)) throw std::runtime_error("Backend changed context size; refusing implicit change");
@@ -309,7 +312,13 @@ static std::string run(State & s, const std::string & prompt, const std::string 
         // Intermediate batches update all attention/recurrent state but need no vocabulary projection.
         const bool output = !c.prefill_last_only || pos+n==int(tokens.size());
         set_batch(batch.get(),tokens.data()+pos,n,pos,output);
-        const int rc=llama_process(ctx.get(),LLAMA_PROCESS_TYPE_DECODE,batch.get());
+        s.profile.phase="prefill";
+        int rc;
+        {
+            Profile::Span timer(s.profile,"prefill_process");
+            rc=llama_process(ctx.get(),LLAMA_PROCESS_TYPE_DECODE,batch.get());
+            if (s.profile.enabled) llama_synchronize(ctx.get());
+        }
         if (rc!=0) { if (s.cancelled()) return s.timed_out ? "timeout" : "cancelled"; throw std::runtime_error("Prefill failed: " + std::to_string(rc)); }
         pos+=n;
         { std::lock_guard<std::mutex> lock(s.mutex); s.metrics.input_done=pos;
@@ -327,23 +336,33 @@ static std::string run(State & s, const std::string & prompt, const std::string 
     int generated=0;
     while(true) {
         if (s.cancelled()) return s.timed_out ? "timeout" : "cancelled";
-        const llama_token token=llama_sampler_sample(sampler.get(),ctx.get(),-1);
+        llama_token token;
+        { Profile::Span timer(s.profile,"sample"); token=llama_sampler_sample(sampler.get(),ctx.get(),-1); }
         if (llama_vocab_is_eog(vocab,token)) return "eos";
         {
             std::lock_guard<std::mutex> lock(s.mutex);
             s.metrics.token_times.push_back(s.now()); s.metrics.token_ids.push_back(token);
         }
         ++generated;
-        char token_buffer[256]; int n=llama_token_to_piece(vocab,token,token_buffer,sizeof(token_buffer),0,true);
-        std::string piece;
-        if (n>=0) piece.assign(token_buffer,n);
-        else { piece.resize(-n); n=llama_token_to_piece(vocab,token,piece.data(),int(piece.size()),0,true); if(n<0) throw std::runtime_error("Token rendering failed"); piece.resize(n); }
-        s.terminal.write(piece);
-        if (!std::cout) throw std::runtime_error("Output stream failed");
+        {
+            Profile::Span timer(s.profile,"render_and_write");
+            char token_buffer[256]; int n=llama_token_to_piece(vocab,token,token_buffer,sizeof(token_buffer),0,true);
+            std::string piece;
+            if (n>=0) piece.assign(token_buffer,n);
+            else { piece.resize(-n); n=llama_token_to_piece(vocab,token,piece.data(),int(piece.size()),0,true); if(n<0) throw std::runtime_error("Token rendering failed"); piece.resize(n); }
+            s.terminal.write(piece);
+            if (!std::cout) throw std::runtime_error("Output stream failed");
+        }
         if (c.max_tokens>0 && generated>=c.max_tokens) return "max_tokens";
         if (int(tokens.size())+generated>=c.context) return "context_limit";
         set_batch(batch.get(),&token,1,pos++);
-        const int rc=llama_process(ctx.get(),LLAMA_PROCESS_TYPE_DECODE,batch.get());
+        s.profile.phase="decode";
+        int rc;
+        {
+            Profile::Span timer(s.profile,"decode_process");
+            rc=llama_process(ctx.get(),LLAMA_PROCESS_TYPE_DECODE,batch.get());
+            if (s.profile.enabled) llama_synchronize(ctx.get());
+        }
         if (rc!=0) { if(s.cancelled()) return s.timed_out ? "timeout" : "cancelled"; throw std::runtime_error("Decode failed: " + std::to_string(rc)); }
     }
 }
@@ -354,12 +373,14 @@ static void usage() {
         "  --model PATH --context N (default 4096) --threads N --batch N\n"
         "  --threads-batch N (0 = threads) --persistent-threadpool on|off\n"
         "  --prefill-last-only on|off (skip unused intermediate logits)\n"
+        "  --cpu-weight-repacking on|off (experimental CPU weight layout)\n"
         "  --prompt TEXT | --prompt-file UTF8_FILE (otherwise read one line)\n"
         "  --interactive (retain weights between independent prompts; /exit quits)\n"
         "  --system TEXT --max-tokens N (-1 = until EOS/context) --seed N\n"
         "  --temperature N --thinking on|off --timeout SECONDS\n"
         "  --record PATH --cancel-file PATH --inspect PATH --quiet-metrics\n"
         "  --logits-file PATH (diagnostic: final prefill logits, float32 little-endian)\n"
+        "  --profile (phase timings) --profile-ops (intrusive operator diagnostic)\n"
         "Metrics: stderr + JSONL; generated text: stdout. Ctrl+C cancels.\n";
 }
 
@@ -378,8 +399,9 @@ public:
 
 static int execute_request(const Config & config, const std::string & prompt, const std::string & system,
         const std::string & inspect, const std::string & logits_file, const std::string & cancel_file,
-        bool quiet, ModelPtr * resident) {
+        bool quiet, bool profile, bool profile_ops, ModelPtr * resident) {
     State state; state.config=config; state.cancel_file=cancel_file;
+    state.profile.enabled=profile || profile_ops; state.profile.operators=profile_ops;
     if(prompt.empty()) throw std::runtime_error("Prompt is empty");
     if(!inspect.empty() && !logits_file.empty()) throw std::runtime_error("--inspect cannot be combined with --logits-file");
     if(!cancel_file.empty() && fs::exists(fs::u8path(cancel_file))) throw std::runtime_error("Cancel file already exists; use a new path");
@@ -391,6 +413,7 @@ static int execute_request(const Config & config, const std::string & prompt, co
     const std::string id=std::to_string(std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::system_clock::now().time_since_epoch()).count())+"-"+std::to_string(GetCurrentProcessId());
     record << json({{"event","start"},{"schema_version",1},{"request_id",id},{"config",state.config.dump()},
         {"logits_diagnostic",!logits_file.empty()},
+        {"profiling_diagnostic",state.profile.enabled},{"operator_profiling",profile_ops},
         {"cpu_build",WLLM_CPU_TARGET},{"resident_session",resident!=nullptr},
         {"llama_commit",WLLM_LLAMA_COMMIT},{"window_s",2},{"pid",GetCurrentProcessId()}}).dump() << '\n';
     std::cerr << "[Wllm] Q4_K_M CPU context=" << state.config.context << " thinking=" << (state.config.thinking?"on":"off")
@@ -400,9 +423,12 @@ static int execute_request(const Config & config, const std::string & prompt, co
               << " threads_batch=" << state.config.effective_threads_batch()
               << " persistent_threadpool=" << state.config.persistent_threadpool
               << " prefill_last_only=" << state.config.prefill_last_only
+              << " cpu_weight_repacking=" << state.config.cpu_weight_repacking
               << " batch=" << state.config.batch << " temperature=" << state.config.temperature
               << " top_k=" << state.config.top_k << " top_p=" << state.config.top_p
               << " presence_penalty=" << state.config.presence_penalty << '\n';
+    if (state.config.cpu_weight_repacking)
+        std::cerr << "[Wllm] Experimental CPU repacking: failed current baseline numerical checks; research use only.\n";
     state.terminal.start(quiet);
     std::thread monitor(observer,std::ref(state),std::ref(record),std::cref(id),quiet);
     std::string reason;
@@ -418,8 +444,17 @@ static int execute_request(const Config & config, const std::string & prompt, co
     state.terminal.finish();
     const auto final=state.metrics.snapshot(state.now());
     display(final,true);
+    const auto profile_result=state.profile.dump();
+    if (state.profile.enabled) {
+        std::cerr << "[Wllm profile] Diagnostic timings (not a speedup benchmark):\n";
+        for (const auto & row : profile_result.at("stages"))
+            std::cerr << "  " << row.at("name").get<std::string>() << "=" << row.at("seconds")
+                      << "s calls=" << row.at("calls") << '\n';
+        if (profile_ops) std::cerr << "  Operator callbacks split/synchronize the graph; details in JSONL end.profile.operators\n";
+    }
     if(!state.metrics.error.empty()) std::cerr << "[Wllm] " << state.metrics.error << '\n';
     record << json({{"event","end"},{"request_id",id},{"metrics",final},{"identity",state.identity},
+        {"profile",profile_result},
         {"token_times_s",state.metrics.token_times},{"token_ids",state.metrics.token_ids},
         {"load_start_s",state.metrics.load_start},{"load_end_s",state.metrics.load_end},
         {"prefill_start_s",state.metrics.prefill_start},{"prefill_end_s",state.metrics.prefill_end}}).dump() << '\n';
@@ -440,14 +475,16 @@ static int main_utf8(int argc,char ** argv) {
             settings=json::parse(read_text(argv[i]));
         }
         std::string prompt,system,inspect,cancel_file,logits_file;
-        bool prompt_set=false, quiet=false, interactive=false;
+        bool prompt_set=false, quiet=false, interactive=false, profile=false, profile_ops=false;
         const std::map<std::string,std::string> ints={{"--context","context"},{"--threads","threads"},{"--threads-batch","threads_batch"},{"--batch","batch"},{"--max-tokens","max_tokens"},{"--seed","seed"}};
-        const std::map<std::string,std::string> bools={{"--thinking","thinking"},{"--persistent-threadpool","persistent_threadpool"},{"--prefill-last-only","prefill_last_only"}};
+        const std::map<std::string,std::string> bools={{"--thinking","thinking"},{"--persistent-threadpool","persistent_threadpool"},{"--prefill-last-only","prefill_last_only"},{"--cpu-weight-repacking","cpu_weight_repacking"}};
         for(int i=1;i<argc;++i) {
             const std::string arg=argv[i];
             if(arg=="--help" || arg=="-h") { usage(); return 0; }
             if(arg=="--quiet-metrics") { quiet=true; continue; }
             if(arg=="--interactive") { interactive=true; continue; }
+            if(arg=="--profile") { profile=true; continue; }
+            if(arg=="--profile-ops") { profile_ops=true; continue; }
             if(i+1>=argc) throw std::runtime_error("Missing value for " + arg);
             const std::string v=argv[++i];
             if(arg=="--config") continue;
@@ -472,7 +509,7 @@ static int main_utf8(int argc,char ** argv) {
         int code=0;
         while (true) {
             if (interactive && (prompt.empty() || prompt=="/exit")) break;
-            code=execute_request(config,prompt,system,inspect,logits_file,cancel_file,quiet,interactive?&resident:nullptr);
+            code=execute_request(config,prompt,system,inspect,logits_file,cancel_file,quiet,profile,profile_ops,interactive?&resident:nullptr);
             if (!interactive || code!=0 || interrupted.load()) break;
             std::cout << '\n' << std::flush;
             std::cerr << "[Wllm] Weights retained; each prompt starts a fresh context. /exit or empty line releases the model.\nPrompt> ";

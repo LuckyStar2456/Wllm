@@ -1,4 +1,4 @@
-"""Compare CPU instruction builds with full-vocabulary numerical checks."""
+"""Compare CPU instruction/layout paths with full-vocabulary numerical checks."""
 from array import array
 import argparse
 import json
@@ -14,11 +14,13 @@ def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--baseline", type=Path, required=True)
     parser.add_argument("--candidate", type=Path, default=ROOT / "build/bin/Release/wllm.exe")
+    parser.add_argument("--candidate-repacking", action="store_true")
     args = parser.parse_args()
     output = ROOT / "reports" / f"cpu-build-correctness-{time.time_ns()}"
     output.mkdir()
     # Quantized integer products are unchanged; float reduction order may differ by ISA.
-    report = {"atol": 1e-3, "rtol": 1e-4, "max_kl": 1e-6, "results": []}
+    report = {"atol": 1e-3, "rtol": 1e-4, "max_kl": 1e-6,
+              "candidate_repacking": args.candidate_repacking, "results": []}
     prompts = ["你好，请简要解释质数。", "word " * 260 + "What is 1+1?"]
     for index, prompt in enumerate(prompts):
         values = []
@@ -31,6 +33,7 @@ def main() -> None:
                     "--persistent-threadpool", "off", "--prefill-last-only", "off",
                     "--seed", "42", "--max-tokens", "32", "--timeout", "300", "--quiet-metrics",
                     "--record", str(record), "--logits-file", str(logits_file),
+                    *(["--cpu-weight-repacking", "on"] if name == "candidate" and args.candidate_repacking else []),
                 ], cwd=ROOT, stdout=subprocess.PIPE, stderr=log, timeout=330, check=True)
             end = json.loads(record.read_text(encoding="utf-8").splitlines()[-1])
             if end["metrics"]["end_reason"] != "max_tokens" or len(end["token_ids"]) != 32:

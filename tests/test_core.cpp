@@ -9,6 +9,9 @@ int main() {
     try {
         auto c=Config::parse(json::object());
         require(c.context==4096,"4K default");
+        require(!c.cpu_weight_repacking,"weight repack stays opt-in");
+        require(Config::parse({{"cpu_weight_repacking",true}}).dump()["cpu_weight_repacking"]==true,"repack recorded");
+        require(throws([]{Config::parse({{"cpu_weight_repacking","on"}});}),"reject string repack config");
         require(Config::parse({{"threads",2}}).effective_threads_batch()==2,"batch threads inherit decode threads");
         require(Config::parse({{"threads",2},{"threads_batch",6}}).dump()["threads_batch"]==6,"explicit prefill threads recorded");
         require(throws([]{Config::parse({{"threads_batch",-1}});}),"negative batch threads rejected");

@@ -41,6 +41,28 @@ AVX512 复用固定上游实现中的量化算子，改变向量指令宽度与�
 
 当前默认仍为 4 线程、输入线程沿用、批次 128；线程池复用和仅最后一批 logits 均保持关闭。这两项已通过基础正确性检查，但本轮筛选未显示稳定性能收益，保留为显式实验开关。
 
+### 按阶段和算子定位耗时
+
+```powershell
+./scripts/run.ps1 -Prompt '解释计算机如何执行程序' -MaxTokens 32 -Profile
+# 更细的诊断会改变执行方式；只用来找候选热点
+./scripts/run.ps1 -Prompt '解释计算机如何执行程序' -MaxTokens 16 -ProfileOps
+```
+
+默认不启用剖析。`-Profile` / 原生 `--profile` 记录输入计算、单步生成计算、采样、文本转换与输出的调用次数和墙钟耗时；计算范围包含 `llama_process` 和显式后端同步。结束时在 stderr 显示，并写入 JSONL 的 `end.profile.stages`。它不包含加载、批次构造、所有调度间隙和卸载，因此各项之和不等于整次请求耗时；生成计算次数也不等于输出 token 数（第一个输出来自输入计算，末尾通常无需再计算）。
+
+`-ProfileOps` / `--profile-ops` 额外按输入/生成阶段、算子类型、第一输入的数据类型汇总到 `end.profile.operators`。它让调度器逐节点执行并同步，可能阻止融合，测量包含调度/同步开销。算子占比只在本次诊断内解释，不能作为正常运行的精确耗时占比，更不能作为优化加速证据。真正的性能对照须关闭两种剖析及 logits 导出。
+
+`start.profiling_diagnostic` 与 `start.operator_profiling` 明确标记诊断模式；没有启用时 `end.profile` 为 null。驻留请求各自重新计量，失败保留已完成的统计；中途终止的计算调用计入阶段耗时，但未完成的节点不计入算子汇总。采样次数可能包含最终 EOS，文本输出次数不包含 EOS。
+
+### CPU 权重重排候选
+
+新增 `cpu_weight_repacking` / `--cpu-weight-repacking on|off` / `-CpuWeightRepacking on|off`，默认 false。它允许上游为适用张量选择 CPU 重排缓冲，改变内存布局和算子路径，不改磁盘 GGUF 或重新量化权重；不能据此假设浮点结果相同或内存用量降低。
+
+本机 AVX2 首个固定前缀的最大 logits 差异约 1.563、原始 softmax KL 约 0.0005563，超出实验前沿用的 `atol=1e-3`、`rtol=1e-4`、`KL<=1e-6` 门槛。即使该样本的 32 个生成 token 相同，仍停止采用和性能评选。它只保留为显式研究选项，不属于通过验收的优化配置；数值门槛失败也不等同于已经证明任务质量降低。
+
+复查可用 `tests/test_cpu_builds.py --baseline <保留的AVX2程序> --candidate-repacking`；该命令当前预期会在数值门槛报错。模型加载复用、上下文预算和默认采样均不因此改变。
+
 PowerShell 入口支持同样的控制，例如：
 
 ```powershell
@@ -69,6 +91,14 @@ py -3.11 scripts/benchmark.py --cases long completion --repeats 3
 配置清单可为每个候选指定 `exe`，用于比较旧二进制。未指定时使用当前构建。候选只能覆盖线程、批次及上述开关，不能在对照中改模型、上下文、量化或采样。种子和输出上限由同一个工作负载指定。
 
 报告位于新建的 `reports/cpu-benchmark-*/summary.json`，包括二进制与模型 SHA256、输入摘要、有效配置、每次记录、失败数、成功样本的中位数和最小/最大值。原始输出和 token 记录留在本地，不随仓库分发。无样本的指标不填 0，失败/超时不混入成功性能统计。
+
+新增 `benchmarks/extended-workloads.json`：长输入固定 16 token、短输入固定 128 token 输出，以及长输入中的单事实提取（自然 EOS 且核对答案）。复现本轮筛选：
+
+```powershell
+py -3.11 scripts/benchmark.py --profiles benchmarks/long-input-profiles.json --workloads benchmarks/extended-workloads.json --cases long long-output long-retrieval --repeats 1
+```
+
+这是单轮筛选，不能直接提升为默认配置或用单样本统计稳定收益。重复文本和单个事实只能检查计算边界及有限检索能力，不代表真实文档理解质量。基准工具拒绝将标记为剖析或 logits 导出的诊断记录纳入成功性能统计。
 
 每个候选先单独预热，再串行交替运行；各请求重新启动进程，不复用前缀。操作系统文件缓存和后台程序未受控，因此不能将其称为冷盘测试，或根据小样本报告可靠 P99。
 

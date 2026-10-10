@@ -11,7 +11,7 @@ from pathlib import Path
 from typing import Any
 
 ROOT = Path(__file__).resolve().parents[1]
-TUNABLES = {"threads", "threads_batch", "batch", "persistent_threadpool", "prefill_last_only"}
+TUNABLES = {"threads", "threads_batch", "batch", "persistent_threadpool", "prefill_last_only", "cpu_weight_repacking"}
 METRICS = ("load_s", "prefill_s", "ttft_s", "decode_average_tps", "elapsed_s", "sampled_peak_working_set_bytes")
 
 
@@ -34,7 +34,7 @@ def summarize(runs: list[dict[str, Any]]) -> dict[str, Any]:
     for run in runs:
         key = f"{run['case']}/{run['profile']}"
         group = result.setdefault(key, {"samples": 0, "failures": 0, "metrics": {}})
-        if not run["ok"]:
+        if not run["ok"] or run.get("diagnostic", False):
             group["failures"] += 1
             continue
         group["samples"] += 1
@@ -84,7 +84,8 @@ def run_once(exe: Path, config: Path, case: dict[str, Any], folder: Path, timeou
     start = next((event for event in events if event.get("event") == "start"), {})
     metrics = end.get("metrics", {})
     expected_reason = case.get("end_reason", "max_tokens")
-    ok = code == 0 and metrics.get("end_reason") == expected_reason
+    diagnostic = bool(start.get("profiling_diagnostic") or start.get("logits_diagnostic"))
+    ok = code == 0 and metrics.get("end_reason") == expected_reason and not diagnostic
     if expected_reason == "max_tokens":
         ok = ok and metrics.get("output_tokens") == case["max_tokens"]
     output_text = (folder / "stdout.txt").read_text(encoding="utf-8")
@@ -92,7 +93,7 @@ def run_once(exe: Path, config: Path, case: dict[str, Any], folder: Path, timeou
     if "expected_answer" in case:
         answer_ok = output_text.split("</think>")[-1].strip() == case["expected_answer"]
         ok = ok and answer_ok
-    return {"ok": ok, "exit_code": code, "wall_s": time.perf_counter() - started,
+    return {"ok": ok, "diagnostic": diagnostic, "exit_code": code, "wall_s": time.perf_counter() - started,
             "metrics": metrics, "effective_config": start.get("config"), "identity": end.get("identity"),
             "token_ids": end.get("token_ids", []), "answer_ok": answer_ok,
             "prompt_sha256": digest(prompt_path), "record": str(record)}

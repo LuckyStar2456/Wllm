@@ -15,6 +15,7 @@ struct Config {
     std::string model, record = "reports/runs.jsonl";
     int context = 4096, threads = 4, threads_batch = 0, batch = 128, max_tokens = -1;
     bool persistent_threadpool = false, prefill_last_only = false;
+    bool cpu_weight_repacking = false;
     double temperature = 1, top_p = .95, min_p = 0, repeat_penalty = 1;
     double presence_penalty = 1.5, frequency_penalty = 0;
     int top_k = 20, repeat_last_n = 64, refresh_ms = 500;
@@ -24,7 +25,7 @@ struct Config {
 
     static Config parse(const json & j) {
         Config c;
-        const auto known = json::parse(R"(["model","record","context","threads","threads_batch","batch","persistent_threadpool","prefill_last_only","max_tokens","temperature","top_p","min_p","repeat_penalty","presence_penalty","frequency_penalty","top_k","repeat_last_n","refresh_ms","seed","thinking","timeout_s","reserve_mib"])");
+        const auto known = json::parse(R"(["model","record","context","threads","threads_batch","batch","persistent_threadpool","prefill_last_only","cpu_weight_repacking","max_tokens","temperature","top_p","min_p","repeat_penalty","presence_penalty","frequency_penalty","top_k","repeat_last_n","refresh_ms","seed","thinking","timeout_s","reserve_mib"])");
         if (!j.is_object()) throw std::runtime_error("Configuration must be an object");
         for (const auto * key : {"context","threads","threads_batch","batch","max_tokens","top_k","repeat_last_n","refresh_ms","seed"}) {
             if (j.contains(key) && !j.at(key).is_number_integer()) throw std::runtime_error(std::string("Expected integer: ") + key);
@@ -41,6 +42,7 @@ struct Config {
 #define READ_FIELD(k) if (j.contains(#k)) j.at(#k).get_to(c.k)
         READ_FIELD(model); READ_FIELD(record); READ_FIELD(context); READ_FIELD(threads);
         READ_FIELD(threads_batch); READ_FIELD(persistent_threadpool); READ_FIELD(prefill_last_only);
+        READ_FIELD(cpu_weight_repacking);
         READ_FIELD(batch); READ_FIELD(max_tokens); READ_FIELD(temperature); READ_FIELD(top_p);
         READ_FIELD(min_p); READ_FIELD(repeat_penalty); READ_FIELD(presence_penalty);
         READ_FIELD(frequency_penalty); READ_FIELD(top_k); READ_FIELD(repeat_last_n);
@@ -72,7 +74,7 @@ struct Config {
             {"seed", seed}, {"thinking", thinking}, {"refresh_ms", refresh_ms}, {"timeout_s", timeout_s},
             {"reserve_mib", reserve_mib}, {"record", record}, {"backend", "CPU"},
             {"cache_k", "f16"}, {"cache_v", "f16"}, {"flash_attention", false}, {"context_shift", false},
-            {"cpu_weight_repacking", false}};
+            {"cpu_weight_repacking", cpu_weight_repacking}};
     }
 };
 

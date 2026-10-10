@@ -5,6 +5,7 @@
   "threads_batch": 0,
   "persistent_threadpool": false,
   "prefill_last_only": false,
+  "cpu_weight_repacking": false,
   "batch": 128,
   "max_tokens": -1,
   "temperature": 1.0,
