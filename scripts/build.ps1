@@ -1,4 +1,4 @@
-param([int]$Jobs = 4)
+param([int]$Jobs = 4, [ValidateSet('avx2','avx512')][string]$CpuTarget = 'avx2')
 $ErrorActionPreference = 'Stop'
 $projectRoot = Split-Path $PSScriptRoot -Parent
 Set-Location -LiteralPath $projectRoot
@@ -20,7 +20,7 @@ $installation = & $vswhere -latest -products '*' -requires Microsoft.VisualStudi
 if (-not $installation) { throw 'Visual Studio C++ x64 toolchain required' }
 $cmake = Join-Path $installation 'Common7/IDE/CommonExtensions/Microsoft/CMake/CMake/bin/cmake.exe'
 if (-not (Test-Path -LiteralPath $cmake)) { $cmake = (Get-Command cmake -ErrorAction Stop).Source }
-& $cmake -S . -B build -G 'Visual Studio 17 2022' -A x64
+& $cmake -S . -B build -G 'Visual Studio 17 2022' -A x64 "-DWLLM_CPU_TARGET=$CpuTarget"
 if ($LASTEXITCODE -ne 0) { throw 'Configure failed' }
 & $cmake --build build --config Release --target wllm wllm-tests --parallel $Jobs
 if ($LASTEXITCODE -ne 0) { throw 'Build failed' }

@@ -1,0 +1,92 @@
+# CPU 基础优化与复现实验
+
+本轮固定已有 Qwen3.5 Q4_K_M 文本权重、F16 状态缓存、思考和采样设置，默认上下文仍为 4096。执行配置不修改模型或自动缩短上下文。
+
+## 本机指令集构建
+
+```powershell
+# 通用起点，保持首版 AVX2 构建方式
+./scripts/build.ps1 -CpuTarget avx2
+# 仅研究候选：本轮 AVX512 未通过数值门槛，不作为推荐运行版本
+./scripts/build.ps1 -CpuTarget avx512
+```
+
+两个选项共用 `build/` 输出位置；切换会重新编译相关后端并替换程序。需要保留对照时先复制旧程序。本机已通过 CPU 与操作系统能力核查，不代表其他机器可运行这个 AVX512 版本。程序在加载后端前检查必要能力，不满足时明确报错。默认构建脚本仍选 AVX2，运行记录的 `cpu_build` 标注实际构建。
+
+AVX512 复用固定上游实现中的量化算子，改变向量指令宽度与计算顺序，不改权重、KV 精度或上下文。跨指令构建另用完整 logits 数值容差（绝对 `1e-3`、相对 `1e-4`）及原始 softmax KL 上限 `1e-6` 检查；不要求跨指令逐 bit 一致，也不将少量前缀检查等同于完整任务质量证明。
+
+本次 AVX512 诊断观察到最大绝对 logits 差异约 1.224、KL 约 0.000139，超出预设门槛。虽然该样本的 32 个生成 token 相同，仍未采用，当前交付程序已恢复为 AVX2；需要进一步解释差异并完成质量评测后才能重新考虑。
+
+## 复用模型加载
+
+```powershell
+./scripts/run.ps1 -Interactive
+```
+
+连续输入独立问题时，模型权重保留在进程中。每次仍完整处理输入、重新建立 KV/循环状态和采样器，不复用前缀、不携带之前的问题，不改变上下文预算。空行、`/exit` 或 EOF 释放模型；错误、取消、超时也结束会话。详细计量与退出约定见[使用说明](quickstart.md)。
+
+`tests/test_session.py` 对三轮“单独启动”和“驻留模型”交替分组验证，检查生成 token 相同、请求计数重置、上下文不串扰、异常与取消后的释放。后续请求的加载和首 token 改善单独报告，不能宣称首次冷启动同样获得加速；最终模型释放耗时也必须计入整段会话成本。
+
+## 执行控制
+
+| 配置 / 原生命令参数 | 含义 |
+|---|---|
+| `threads` / `--threads` | 单 token 生成线程数，1–256 |
+| `threads_batch` / `--threads-batch` | 多 token 输入计算线程数；0 表示沿用 `threads` |
+| `batch` / `--batch` | 输入批次大小，不得超过所选上下文 |
+| `persistent_threadpool` / `--persistent-threadpool on\|off` | 在一次请求内复用 CPU 工作线程；结束、异常和取消时释放 |
+| `prefill_last_only` / `--prefill-last-only on\|off` | 中间输入批次更新完整 KV/循环状态，只在最后一批请求输出 logits |
+
+复用线程池采用同一个容量为两阶段最大线程数的池，后端按当前阶段选择参与线程数。它不是模型常驻或跨请求缓存。跳过中间 logits 不跳过输入 token，也不裁剪注意力或循环状态。
+
+当前默认仍为 4 线程、输入线程沿用、批次 128；线程池复用和仅最后一批 logits 均保持关闭。这两项已通过基础正确性检查，但本轮筛选未显示稳定性能收益，保留为显式实验开关。
+
+PowerShell 入口支持同样的控制，例如：
+
+```powershell
+./scripts/run.ps1 -Threads 4 -ThreadsBatch 4 -Batch 128 -Prompt '你好'
+# 显式回到 0.1 的执行方式，保留当前模型、上下文和采样配置：
+./scripts/run.ps1 -Threads 4 -ThreadsBatch 4 -Batch 128 -PersistentThreadpool off -PrefillLastOnly off -Prompt '你好'
+```
+
+有效配置写入每次 JSONL 的 `start.config`，其中 `threads_batch` 为解析后的实际线程数。`prefill_batches` 和 `prefill_logits_batches` 分别记录完成的输入批次与请求输出概率的批次。它们是请求计数，不是底层算子剖析结果。
+
+## 对照工具
+
+Python 3.11 标准库即可运行，无需额外 Python 依赖。先构建程序并准备 `configs/local.json`：
+
+```powershell
+# 单项开关和组合消融，每组 3 次，顺序逐轮反转
+py -3.11 scripts/benchmark.py --cases short medium --repeats 3
+# 分阶段线程及批次候选
+py -3.11 scripts/benchmark.py --profiles benchmarks/thread-profiles.json --cases short medium --repeats 3
+# 较长输入、完整回答单独运行，避免与固定输出步数混比
+py -3.11 scripts/benchmark.py --cases long completion --repeats 3
+```
+
+`benchmarks/workloads.json` 定义合成短、中、长输入及简单算术完整回答。实际 token 数以运行记录为准；长输入为重复事实，仅用于计算与边界测试，不能代表长文理解质量。固定步数样本必须达到约定输出 token 数，提前 EOS 不算成功的固定步数样本。完整回答必须自然 EOS 且匹配预设答案。
+
+配置清单可为每个候选指定 `exe`，用于比较旧二进制。未指定时使用当前构建。候选只能覆盖线程、批次及上述开关，不能在对照中改模型、上下文、量化或采样。种子和输出上限由同一个工作负载指定。
+
+报告位于新建的 `reports/cpu-benchmark-*/summary.json`，包括二进制与模型 SHA256、输入摘要、有效配置、每次记录、失败数、成功样本的中位数和最小/最大值。原始输出和 token 记录留在本地，不随仓库分发。无样本的指标不填 0，失败/超时不混入成功性能统计。
+
+每个候选先单独预热，再串行交替运行；各请求重新启动进程，不复用前缀。操作系统文件缓存和后台程序未受控，因此不能将其称为冷盘测试，或根据小样本报告可靠 P99。
+
+## 正确性与采用条件
+
+```powershell
+py -3.11 tests/test_cpu_optimizations.py
+py -3.11 tests/test_integration.py
+py -3.11 tests/test_benchmark.py
+py -3.11 tests/test_session.py
+# 旧 AVX2 0.2 二进制需先自行保存；该文件不随仓库分发
+py -3.11 tests/test_cpu_builds.py --baseline reports/e2-baseline/wllm-avx2-v0.2.exe
+```
+
+执行改动用相同输入前缀的完整词表 logits 做数值对照（预设绝对/相对容差均为 `1e-5`），并比较固定种子下的生成 token、正文和多批次状态连续性。`--logits-file PATH` 可导出最后一批输入的完整 float32 小端 logits；仅用于诊断，带导出的时间不纳入性能比较。它包含输入相关信息，应按本地推理资料保管。
+
+性能筛选预设 5% 的改善/回归界线，分别检查加载、首 token、输入处理、生成与总耗时，并查看内存和重复样本波动。超过噪声且可重复的收益才构成采用依据。线程/批次切换可能改变浮点计算顺序；同种子文本不同不自动等于质量退化，但没有充分数值与任务检查的配置不得提升为默认。
+
+本轮属于 E2 的 CPU 第一批实验。尚不包含 GPU 后端、跨引擎完整性能比较、带历史的会话缓存或推测解码，也不承诺某组参数适用于所有输入或电脑。
+
+`benchmarks/build-profiles.json` 保留首版与 AVX512 实验构建的比较定义，因数值门槛失败，未开展后续重复性能验收。它明确引用本地保存的 `reports/e2-baseline/wllm-v0.1.exe` 和 `wllm-avx512-experimental.exe`，不会误用已恢复的 AVX2 程序。新克隆不包含这些文件；旧版应从 `deeceda` 在独立检出中构建，且使用旧版支持的配置字段。不要用新程序冒充旧版基线。

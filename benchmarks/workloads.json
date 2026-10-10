@@ -1,0 +1,6 @@
+[
+  {"name": "short", "prompt": "Explain why the sky is blue in simple terms.", "max_tokens": 64},
+  {"name": "medium", "repeat_text": "The red box contains three apples. The blue box contains five pears. ", "repeat": 16, "prompt": "Summarize the facts stated above.", "max_tokens": 32},
+  {"name": "long", "repeat_text": "The red box contains three apples. The blue box contains five pears. ", "repeat": 224, "prompt": "Summarize the facts stated above.", "max_tokens": 16},
+  {"name": "completion", "prompt": "What is 1+1? Answer with one digit.", "max_tokens": 512, "end_reason": "eos", "expected_answer": "2"}
+]

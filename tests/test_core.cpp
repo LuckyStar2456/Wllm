@@ -9,6 +9,11 @@ int main() {
     try {
         auto c=Config::parse(json::object());
         require(c.context==4096,"4K default");
+        require(Config::parse({{"threads",2}}).effective_threads_batch()==2,"batch threads inherit decode threads");
+        require(Config::parse({{"threads",2},{"threads_batch",6}}).dump()["threads_batch"]==6,"explicit prefill threads recorded");
+        require(throws([]{Config::parse({{"threads_batch",-1}});}),"negative batch threads rejected");
+        require(throws([]{Config::parse({{"persistent_threadpool","false"}});}),"boolean strings rejected");
+        require(!Config::parse({{"persistent_threadpool",false},{"prefill_last_only",false}}).prefill_last_only,"explicit optimization rollback");
         require(Config::parse({{"context",262144}}).context==262144,"explicit large context");
         require(throws([]{Config::parse({{"context",0}});}),"no auto context");
         require(throws([]{Config::parse({{"context",4096},{"batch",8192}});}),"batch budget");

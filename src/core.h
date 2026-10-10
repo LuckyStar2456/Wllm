@@ -13,7 +13,8 @@ using json = nlohmann::ordered_json;
 
 struct Config {
     std::string model, record = "reports/runs.jsonl";
-    int context = 4096, threads = 4, batch = 128, max_tokens = -1;
+    int context = 4096, threads = 4, threads_batch = 0, batch = 128, max_tokens = -1;
+    bool persistent_threadpool = false, prefill_last_only = false;
     double temperature = 1, top_p = .95, min_p = 0, repeat_penalty = 1;
     double presence_penalty = 1.5, frequency_penalty = 0;
     int top_k = 20, repeat_last_n = 64, refresh_ms = 500;
@@ -23,9 +24,9 @@ struct Config {
 
     static Config parse(const json & j) {
         Config c;
-        const auto known = json::parse(R"(["model","record","context","threads","batch","max_tokens","temperature","top_p","min_p","repeat_penalty","presence_penalty","frequency_penalty","top_k","repeat_last_n","refresh_ms","seed","thinking","timeout_s","reserve_mib"])");
+        const auto known = json::parse(R"(["model","record","context","threads","threads_batch","batch","persistent_threadpool","prefill_last_only","max_tokens","temperature","top_p","min_p","repeat_penalty","presence_penalty","frequency_penalty","top_k","repeat_last_n","refresh_ms","seed","thinking","timeout_s","reserve_mib"])");
         if (!j.is_object()) throw std::runtime_error("Configuration must be an object");
-        for (const auto * key : {"context","threads","batch","max_tokens","top_k","repeat_last_n","refresh_ms","seed"}) {
+        for (const auto * key : {"context","threads","threads_batch","batch","max_tokens","top_k","repeat_last_n","refresh_ms","seed"}) {
             if (j.contains(key) && !j.at(key).is_number_integer()) throw std::runtime_error(std::string("Expected integer: ") + key);
             if (j.contains(key)) {
                 const auto v = j.at(key).get<int64_t>();
@@ -39,6 +40,7 @@ struct Config {
         }
 #define READ_FIELD(k) if (j.contains(#k)) j.at(#k).get_to(c.k)
         READ_FIELD(model); READ_FIELD(record); READ_FIELD(context); READ_FIELD(threads);
+        READ_FIELD(threads_batch); READ_FIELD(persistent_threadpool); READ_FIELD(prefill_last_only);
         READ_FIELD(batch); READ_FIELD(max_tokens); READ_FIELD(temperature); READ_FIELD(top_p);
         READ_FIELD(min_p); READ_FIELD(repeat_penalty); READ_FIELD(presence_penalty);
         READ_FIELD(frequency_penalty); READ_FIELD(top_k); READ_FIELD(repeat_last_n);
@@ -50,7 +52,7 @@ struct Config {
     }
     void validate() const {
         if (context < 512 || context > 262144) throw std::runtime_error("context must be 512..262144 (default 4096); no automatic shrinking");
-        if (threads < 1 || threads > 256 || batch < 1 || batch > context) throw std::runtime_error("Invalid threads or batch");
+        if (threads < 1 || threads > 256 || threads_batch < 0 || threads_batch > 256 || batch < 1 || batch > context) throw std::runtime_error("Invalid threads or batch");
         if (max_tokens != -1 && max_tokens < 1) throw std::runtime_error("max_tokens must be -1 or positive");
         if (!std::isfinite(temperature) || temperature < 0 || !std::isfinite(top_p) || top_p <= 0 || top_p > 1 ||
             !std::isfinite(min_p) || min_p < 0 || min_p > 1 || top_k < 0 ||
@@ -59,8 +61,11 @@ struct Config {
         if (refresh_ms < 100 || refresh_ms > 10000 || !std::isfinite(timeout_s) || timeout_s < 0 ||
             !std::isfinite(reserve_mib) || reserve_mib < 0) throw std::runtime_error("Invalid refresh/timeout/reserve");
     }
+    int effective_threads_batch() const { return threads_batch == 0 ? threads : threads_batch; }
     json dump() const {
         return {{"model", model}, {"context", context}, {"threads", threads}, {"batch", batch},
+            {"threads_batch", effective_threads_batch()}, {"persistent_threadpool", persistent_threadpool},
+            {"prefill_last_only", prefill_last_only},
             {"max_tokens", max_tokens}, {"temperature", temperature}, {"top_k", top_k}, {"top_p", top_p},
             {"min_p", min_p}, {"repeat_penalty", repeat_penalty}, {"repeat_last_n", repeat_last_n},
             {"presence_penalty", presence_penalty}, {"frequency_penalty", frequency_penalty},
@@ -75,11 +80,12 @@ struct Config {
 struct Metrics {
     std::string stage = "starting", reason, error;
     double load_start = -1, load_end = -1, prefill_start = -1, prefill_end = -1, ended = -1;
-    int input_total = 0, input_done = 0;
+    int input_total = 0, input_done = 0, prefill_batches = 0, prefill_logits_batches = 0;
     std::vector<double> token_times;
     std::vector<int32_t> token_ids;
     uint64_t working_set = 0, private_bytes = 0, available = 0, peak_working_set = 0;
     bool memory_available = false;
+    bool model_reused = false;
     std::optional<double> average_tps() const {
         if (token_times.size() < 2 || token_times.back() <= token_times.front()) return {};
         return (token_times.size() - 1) / (token_times.back() - token_times.front());
@@ -96,8 +102,10 @@ struct Metrics {
         auto num = [](std::optional<double> v) -> json { return v ? json(*v) : json(nullptr); };
         const double pp = prefill_start < 0 ? 0 : (prefill_end >= 0 ? prefill_end : now) - prefill_start;
         return {{"stage", stage}, {"end_reason", reason}, {"error", error}, {"elapsed_s", now},
+            {"model_reused", model_reused},
             {"load_s", load_start < 0 ? json(nullptr) : json((load_end >= 0 ? load_end : now) - load_start)},
             {"input_tokens", input_total}, {"input_processed", input_done}, {"input_reused", 0},
+            {"prefill_batches", prefill_batches}, {"prefill_logits_batches", prefill_logits_batches},
             {"prefill_s", prefill_start < 0 ? json(nullptr) : json(pp)},
             {"prefill_tps", pp > 0 && input_done > 0 ? json(input_done / pp) : json(nullptr)},
             {"ttft_s", token_times.empty() ? json(nullptr) : json(token_times.front())},

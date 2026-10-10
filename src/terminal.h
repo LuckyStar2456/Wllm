@@ -60,7 +60,7 @@ public:
         }
         const int text_rows=height-8;
         std::ostringstream frame;
-        const std::string title="Wllm 0.1 | CPU Q4_K_M | ctx=" + std::to_string(context) + " | Ctrl+C stop";
+        const std::string title="Wllm 0.2 | CPU Q4_K_M | ctx=" + std::to_string(context) + " | Ctrl+C stop";
         frame << "\x1b[H\x1b[2K" << title.substr(0,width-1) << "\r\n";
         size_t begin=lines.size()>size_t(text_rows)?lines.size()-text_rows:0;
         for(int row=0;row<text_rows;++row) {
@@ -69,7 +69,7 @@ public:
             frame << "\r\n";
         }
         std::vector<std::string> status={
-            "--- " + j.at("stage").get<std::string>() + " | total " + number(j,"elapsed_s") + "s | load " + number(j,"load_s") + "s",
+            "--- " + j.at("stage").get<std::string>() + " | total " + number(j,"elapsed_s") + "s | load " + number(j,"load_s") + "s | reused=" + j.at("model_reused").dump(),
             "Input " + j.at("input_processed").dump() + "/" + j.at("input_tokens").dump() + " | " + number(j,"prefill_tps") + " tok/s | TTFT " + number(j,"ttft_s") + "s",
             "Output " + j.at("output_tokens").dump() + " | live " + number(j,"decode_window_tps") + " | avg " + number(j,"decode_average_tps") + " tok/s",
             "RAM " + number(j,"working_set_bytes",1048576) + " | peak " + number(j,"sampled_peak_working_set_bytes",1048576) + " MiB",

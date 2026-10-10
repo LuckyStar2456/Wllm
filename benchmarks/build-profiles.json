@@ -1,0 +1,4 @@
+[
+  {"name": "v01-avx2", "exe": "reports/e2-baseline/wllm-v0.1.exe", "settings": {"threads": 4, "batch": 128}},
+  {"name": "avx512-experimental", "exe": "reports/e2-baseline/wllm-avx512-experimental.exe", "settings": {"threads": 4, "threads_batch": 4, "batch": 128, "persistent_threadpool": false, "prefill_last_only": false}}
+]
