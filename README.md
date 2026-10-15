@@ -2,7 +2,7 @@
 
 Wllm 是独立的本地模型推理优化项目，正式名称为 **Wllm**。
 
-创建日期：2026-10-07。更新：2026-10-10。当前状态：0.2 已实现首批 CPU 基础优化与对照工具，新增权重驻留的连续独立请求模式；结果与限制见 [E2 报告](reports/e2-validation.md)，首版记录保留于[原型报告](reports/prototype-validation.md)。
+创建日期：2026-10-07。文档更新：2026-10-15，运行实现仍为现有 0.2。当前状态：已实现首批 CPU 基础优化与对照工具，新增权重驻留的连续独立请求模式；结果与限制见 [E2 报告](reports/e2-validation.md)，首版记录保留于[原型报告](reports/prototype-validation.md)。
 
 后续一轮增加可关闭的阶段/算子剖析，并扩展长输入、长输出与事实提取测试。默认执行配置保持不变；候选的采用与拒绝依据见[剖析与长输入报告](reports/e2-followup.md)。
 
@@ -50,7 +50,7 @@ Wllm 是独立的本地模型推理优化项目，正式名称为 **Wllm**。
 
 - [项目目标与决策](docs/project-goals.md)：用户已确认内容、A/B/C 比较、边界和待决事项。
 - [架构设计](docs/architecture.md)：执行、状态、资源、配置与扩展边界。
-- [实施与评测路线](docs/implementation-plan.md)：原型验收、计量口径、分级优化和后续模型档位。
+- [实施与评测路线](docs/implementation-plan.md)：原型验收、计量口径，以及 E2–E5 逐项任务、参考项目/机制、前置条件与验收；含大模型和弱硬件策略。
 - [原型使用说明](docs/quickstart.md)：构建、模型适配、运行、上下文与指标。
 - [CPU 基础优化](docs/cpu-optimization.md)：分阶段线程、执行开关、可重复的对照与正确性检查。
 - [本机验收报告](reports/prototype-validation.md)：已验证内容、数据及限制。
