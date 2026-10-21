@@ -86,6 +86,7 @@ struct Metrics {
     std::vector<double> token_times;
     std::vector<int32_t> token_ids;
     uint64_t working_set = 0, private_bytes = 0, available = 0, peak_working_set = 0;
+    uint64_t process_peak_working_set = 0, process_peak_private = 0;
     uint64_t commit_total = 0, commit_limit = 0, page_faults = 0;
     uint64_t io_read_bytes = 0, io_write_bytes = 0;
     bool system_commit_available = false, io_available = false;
@@ -122,6 +123,8 @@ struct Metrics {
             {"private_bytes", memory_available ? json(private_bytes) : json(nullptr)},
             {"system_available_bytes", memory_available ? json(available) : json(nullptr)},
             {"sampled_peak_working_set_bytes", memory_available ? json(peak_working_set) : json(nullptr)},
+            {"process_peak_working_set_bytes", memory_available ? json(process_peak_working_set) : json(nullptr)},
+            {"process_peak_private_bytes", memory_available ? json(process_peak_private) : json(nullptr)},
             {"system_commit_total_bytes", system_commit_available ? json(commit_total) : json(nullptr)},
             {"system_commit_limit_bytes", system_commit_available ? json(commit_limit) : json(nullptr)},
             {"process_page_fault_count", memory_available ? json(page_faults) : json(nullptr)},

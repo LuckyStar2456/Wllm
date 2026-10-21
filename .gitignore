@@ -11,5 +11,7 @@ __pycache__/
 !/reports/e2-followup.json
 !/reports/resource-validation.md
 !/reports/resource-validation.json
+!/reports/memory-backend-validation.md
+!/reports/memory-backend-validation.json
 /configs/local.json
 *.user

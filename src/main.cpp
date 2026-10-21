@@ -8,6 +8,7 @@
 #include "profile.h"
 #include "terminal.h"
 #include "llama.h"
+#include "llama-ext.h" // WIP allocation query API, bound to the exact dependencies.json commit.
 #include "gguf.h"
 #include "ggml-cpu.h"
 #include "chat.h"
@@ -67,6 +68,7 @@ struct State {
     std::mutex mutex;
     std::condition_variable wake;
     bool finished = false;
+    bool memory_diagnostic = false;
     std::atomic<bool> timed_out{false};
     std::string cancel_file;
     double now() const { return std::chrono::duration<double>(Clock::now() - start).count(); }
@@ -84,6 +86,8 @@ struct State {
             metrics.private_bytes = p.PrivateUsage;
             metrics.available = m.ullAvailPhys;
             metrics.peak_working_set = std::max(metrics.peak_working_set, metrics.working_set);
+            metrics.process_peak_working_set = p.PeakWorkingSetSize;
+            metrics.process_peak_private = p.PeakPagefileUsage;
             metrics.page_faults = p.PageFaultCount;
         }
         PERFORMANCE_INFORMATION commit{}; commit.cb = sizeof(commit);
@@ -97,6 +101,36 @@ struct State {
             metrics.io_available = true;
             metrics.io_read_bytes = io.ReadTransferCount; metrics.io_write_bytes = io.WriteTransferCount;
         }
+    }
+};
+
+// Query allocations only at lifecycle boundaries, never from the monitor thread.
+static void observe_allocations(State & s, llama_context * context, const char * phase) {
+    if (!s.memory_diagnostic) return;
+    json buffers = json::array();
+    uint64_t model = 0, state = 0, compute = 0;
+    for (const auto & [type, usage] : llama_get_memory_breakdown(context)) {
+        buffers.push_back({{"buffer_type",ggml_backend_buft_name(type)}, {"model_bytes",usage.model},
+            {"context_bytes",usage.context}, {"compute_bytes",usage.compute}});
+        model += usage.model; state += usage.context; compute += usage.compute;
+    }
+    std::lock_guard<std::mutex> lock(s.mutex);
+    s.sample_memory();
+    s.identity["allocation_observations"].push_back({{"phase",phase}, {"buffers",buffers},
+        {"model_buffer_bytes",model}, {"context_buffer_bytes",state}, {"compute_buffer_bytes",compute},
+        {"process_private_bytes",s.metrics.private_bytes}, {"process_peak_private_bytes",s.metrics.process_peak_private},
+        {"process_working_set_bytes",s.metrics.working_set}, {"process_peak_working_set_bytes",s.metrics.process_peak_working_set},
+        {"note","backend buffer allocation; mapped model bytes are not measured residency; process peaks are lifetime cumulative"}});
+}
+
+class FinalAllocationObservation {
+    State & state;
+    llama_context * context;
+public:
+    FinalAllocationObservation(State & s, llama_context * ctx) : state(s), context(ctx) {}
+    ~FinalAllocationObservation() {
+        // Diagnostic reporting must not prevent normal error/cancellation cleanup.
+        try { observe_allocations(state, context, "before_context_release"); } catch (...) {}
     }
 };
 
@@ -335,6 +369,8 @@ static std::string run(State & s, const std::string & prompt, const std::string 
     std::unique_ptr<llama_context,decltype(&llama_free)> ctx(llama_init_from_model(model.get(),cp),llama_free);
     if (!ctx) throw std::runtime_error("Context allocation failed; requested context was not reduced");
     if (llama_n_ctx(ctx.get()) != uint32_t(c.context)) throw std::runtime_error("Backend changed context size; refusing implicit change");
+    observe_allocations(s, ctx.get(), "context_ready");
+    FinalAllocationObservation final_observation(s, ctx.get());
     CpuPool pool(ctx.get(), c);
     {
         std::lock_guard<std::mutex> lock(s.mutex);
@@ -375,6 +411,7 @@ static std::string run(State & s, const std::string & prompt, const std::string 
           ++s.metrics.prefill_batches; if (output) ++s.metrics.prefill_logits_batches; }
     }
     { std::lock_guard<std::mutex> lock(s.mutex); s.metrics.prefill_end=s.now(); s.metrics.stage="generating"; }
+    observe_allocations(s, ctx.get(), "prefill_complete");
     if (!logits_path.empty()) {
         // Diagnostic only: full, unsampled vocabulary logits for this fixed input prefix.
         const float * logits = llama_get_logits_ith(ctx.get(), -1);
@@ -432,6 +469,7 @@ static void usage() {
         "  --logits-file PATH (diagnostic: final prefill logits, float32 little-endian)\n"
         "  --profile (phase timings) --profile-ops (intrusive operator diagnostic)\n"
         "  --resources PATH (write resource/CPU budget report; no inference or prompt read)\n"
+        "  --memory-diagnostic (allocation/OS peaks; excluded from performance benchmarks)\n"
         "Metrics: stderr + JSONL; generated text: stdout. Ctrl+C cancels.\n";
 }
 
@@ -450,8 +488,9 @@ public:
 
 static int execute_request(const Config & config, const std::string & prompt, const std::string & system,
         const std::string & inspect, const std::string & logits_file, const std::string & cancel_file,
-        bool quiet, bool profile, bool profile_ops, ModelPtr * resident) {
+        bool quiet, bool profile, bool profile_ops, bool memory_diagnostic, ModelPtr * resident) {
     State state; state.config=config; state.cancel_file=cancel_file;
+    state.memory_diagnostic=memory_diagnostic;
     state.profile.enabled=profile || profile_ops; state.profile.operators=profile_ops;
     if(prompt.empty()) throw std::runtime_error("Prompt is empty");
     if(!inspect.empty() && !logits_file.empty()) throw std::runtime_error("--inspect cannot be combined with --logits-file");
@@ -464,6 +503,7 @@ static int execute_request(const Config & config, const std::string & prompt, co
     const std::string id=std::to_string(std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::system_clock::now().time_since_epoch()).count())+"-"+std::to_string(GetCurrentProcessId());
     record << json({{"event","start"},{"schema_version",1},{"request_id",id},{"config",state.config.dump()},
         {"logits_diagnostic",!logits_file.empty()},
+        {"memory_diagnostic",memory_diagnostic},
         {"profiling_diagnostic",state.profile.enabled},{"operator_profiling",profile_ops},
         {"cpu_build",WLLM_CPU_TARGET},{"resident_session",resident!=nullptr},
         {"llama_commit",WLLM_LLAMA_COMMIT},{"window_s",2},{"pid",GetCurrentProcessId()}}).dump() << '\n';
@@ -526,7 +566,7 @@ static int main_utf8(int argc,char ** argv) {
             settings=json::parse(read_text(argv[i]));
         }
         std::string prompt,system,inspect,cancel_file,logits_file,resources_file;
-        bool prompt_set=false, quiet=false, interactive=false, profile=false, profile_ops=false;
+        bool prompt_set=false, quiet=false, interactive=false, profile=false, profile_ops=false, memory_diagnostic=false;
         const std::map<std::string,std::string> ints={{"--context","context"},{"--threads","threads"},{"--threads-batch","threads_batch"},{"--batch","batch"},{"--max-tokens","max_tokens"},{"--seed","seed"}};
         const std::map<std::string,std::string> bools={{"--thinking","thinking"},{"--persistent-threadpool","persistent_threadpool"},{"--prefill-last-only","prefill_last_only"},{"--cpu-weight-repacking","cpu_weight_repacking"}};
         for(int i=1;i<argc;++i) {
@@ -536,6 +576,7 @@ static int main_utf8(int argc,char ** argv) {
             if(arg=="--interactive") { interactive=true; continue; }
             if(arg=="--profile") { profile=true; continue; }
             if(arg=="--profile-ops") { profile_ops=true; continue; }
+            if(arg=="--memory-diagnostic") { memory_diagnostic=true; continue; }
             if(i+1>=argc) throw std::runtime_error("Missing value for " + arg);
             const std::string v=argv[++i];
             if(arg=="--config") continue;
@@ -554,7 +595,7 @@ static int main_utf8(int argc,char ** argv) {
         }
         const auto config=Config::parse(settings);
         if (!resources_file.empty()) {
-            if (prompt_set || interactive || !inspect.empty() || !logits_file.empty() || profile || profile_ops || !cancel_file.empty() || !system.empty())
+            if (prompt_set || interactive || !inspect.empty() || !logits_file.empty() || profile || profile_ops || memory_diagnostic || !cancel_file.empty() || !system.empty())
                 throw std::runtime_error("--resources is a standalone probe; do not combine with request/diagnostic options");
             State state; state.config = config;
             json report = {{"schema_version",1}, {"evidence", "resource probe only; no model execution"},
@@ -582,7 +623,7 @@ static int main_utf8(int argc,char ** argv) {
         int code=0;
         while (true) {
             if (interactive && (prompt.empty() || prompt=="/exit")) break;
-            code=execute_request(config,prompt,system,inspect,logits_file,cancel_file,quiet,profile,profile_ops,interactive?&resident:nullptr);
+            code=execute_request(config,prompt,system,inspect,logits_file,cancel_file,quiet,profile,profile_ops,memory_diagnostic,interactive?&resident:nullptr);
             if (!interactive || code!=0 || interrupted.load()) break;
             std::cout << '\n' << std::flush;
             std::cerr << "[Wllm] Weights retained; each prompt starts a fresh context. /exit or empty line releases the model.\nPrompt> ";

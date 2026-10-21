@@ -21,6 +21,15 @@ python scripts/benchmark.py --profiles benchmarks/baseline-profiles.json --workl
 
 `scripts/build.ps1 -BuildDirectory build/candidate` 可在独立目录验证候选，不覆盖默认可执行文件；Python 探测/负载检查工具支持 `--exe build/candidate/bin/Release/wllm.exe`。基准的 profile 文件也可显式指定 `exe` 路径。
 
+需要校准旧的 3GiB 工作区预留时，先做有界内存诊断，再显式使用对应记录；校准会真实执行当前模型，但其计时不进入正式性能汇总：
+
+```powershell
+python scripts/calibrate_memory.py --output reports/memory-local
+python scripts/benchmark.py --profiles benchmarks/baseline-profiles.json --workloads benchmarks/representative-workloads.json --memory-calibration reports/memory-local/calibration.json --repeats 3
+```
+
+校准不修改普通推理配置、上下文、思考或精度；重新构建导致可执行文件摘要改变时也会失效。即使校准有效，资源不足仍会拒绝。核显工具链探测可用 `scripts/build_vulkan_probe.ps1 -VulkanSdk <本地SDK目录>` 在独立目录构建锁定上游的探测工具；它不为 Wllm 默认程序启用核显，也不证明模型/状态操作已验收。
+
 ```powershell
 ./scripts/build.ps1
 ```

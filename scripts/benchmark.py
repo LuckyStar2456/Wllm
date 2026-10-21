@@ -32,14 +32,21 @@ def digest(path: Path) -> str:
         return hashlib.file_digest(stream, "sha256").hexdigest()
 
 
-def resource_preflight(exe: Path, config: Path, destination: Path) -> dict[str, Any]:
+def resource_preflight(exe: Path, config: Path, destination: Path, calibration: dict[str, Any] | None = None) -> dict[str, Any]:
     """Fresh observation before each model process; never infer readiness from an older snapshot."""
     result = subprocess.run([str(exe), "--config", str(config), "--resources", str(destination)],
                             cwd=ROOT, capture_output=True, text=True, encoding="utf-8", timeout=45)
     if result.returncode != 0:
         raise RuntimeError(f"Resource probe failed; build the current CPU executable first: {result.stderr.strip()}")
     report = read_json(destination)
-    return report["model"]["resource_ledger"]
+    ledger = report["model"]["resource_ledger"]
+    if calibration is not None:
+        # Import here so ordinary benchmark/test users need no calibration module setup.
+        from memory_calibration import assess_calibrated
+        ledger = assess_calibrated(report, calibration)
+        report["calibrated_assessment"] = ledger
+        save_json(destination, report)
+    return ledger
 
 
 def summarize(runs: list[dict[str, Any]]) -> dict[str, Any]:
@@ -98,7 +105,7 @@ def run_once(exe: Path, config: Path, case: dict[str, Any], folder: Path, timeou
     start = next((event for event in events if event.get("event") == "start"), {})
     metrics = end.get("metrics", {})
     expected_reason = case.get("end_reason", "max_tokens")
-    diagnostic = bool(start.get("profiling_diagnostic") or start.get("logits_diagnostic"))
+    diagnostic = bool(start.get("profiling_diagnostic") or start.get("logits_diagnostic") or start.get("memory_diagnostic"))
     ok = code == 0 and metrics.get("end_reason") == expected_reason and not diagnostic
     if expected_reason == "max_tokens":
         ok = ok and metrics.get("output_tokens") == case["max_tokens"]
@@ -125,6 +132,7 @@ def main() -> None:
     parser.add_argument("--timeout", type=float, default=900)
     parser.add_argument("--output", type=Path, help="New output directory; existing results are never overwritten")
     parser.add_argument("--no-warmup", action="store_true")
+    parser.add_argument("--memory-calibration", type=Path, help="Explicit calibration bound to this executable/model/config/workload manifest")
     args = parser.parse_args()
     if args.repeats < 1 or args.timeout <= 0:
         parser.error("repeats and timeout must be positive")
@@ -167,11 +175,23 @@ def main() -> None:
                               "note": "Screening only. Token equality and task quality checked separately; no automatic promotion."},
         "resource_preflights": [], "warmups": [], "runs": [],
     }
+    calibration = None
+    model_stat = model.stat()
+    if args.memory_calibration:
+        from memory_calibration import validate_binding
+        calibration = read_json(args.memory_calibration)
+        summary["model_sha256"] = digest(model)
+        for _, exe, _ in prepared:
+            validate_binding(calibration, digest(exe), summary["model_sha256"], digest(args.workloads))
+        summary["memory_calibration"] = {"path": str(args.memory_calibration.resolve()), "sha256": digest(args.memory_calibration)}
     save_json(output / "summary.json", summary)
 
     def admitted(name: str, exe: Path, config: Path, label: str) -> bool:
         path = output / f"resources-{label}-{name}.json"
-        ledger = resource_preflight(exe, config, path)
+        current = model.stat()
+        if (current.st_size, current.st_mtime_ns) != (model_stat.st_size, model_stat.st_mtime_ns):
+            raise RuntimeError("Model changed during benchmark; stop rather than reuse calibration/identity")
+        ledger = resource_preflight(exe, config, path, calibration)
         summary["resource_preflights"].append({"profile": name, "label": label, "report": str(path),
             "eligible": ledger["performance_preflight_eligible"], "reasons": ledger["performance_rejection_reasons"]})
         if not ledger["performance_preflight_eligible"]:
@@ -183,7 +203,8 @@ def main() -> None:
     for name, exe, config in prepared:
         if not admitted(name, exe, config, "initial"):
             raise SystemExit(f"Performance run deferred: insufficient/unsupported resources for {name}; see {output}")
-    summary["model_sha256"] = digest(model)
+    if summary["model_sha256"] is None:
+        summary["model_sha256"] = digest(model)
     save_json(output / "summary.json", summary)
     if not args.no_warmup:
         for name, exe, config in prepared:

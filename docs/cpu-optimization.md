@@ -4,6 +4,10 @@
 
 2026-10-21 新增资源准入与负载准备，见[报告](../reports/resource-validation.md)。基准在预热/每次样本前调用原生资源探测，拒绝原因写入 schema 2 的 `resource_preflights`；拒绝时没有生成样本，不能填 0 耗时或宣称失败请求更快。旧可执行文件没有 `--resources`，需先构建当前版本。
 
+同日后续增加 `--memory-diagnostic`：通过固定依赖的 `llama-ext.h` WIP 接口查询模型/上下文/计算缓冲区，在上下文就绪、prefill 完成和释放前记录；该接口受精确上游提交约束，不修改第三方源码。额外记录 Windows `PeakWorkingSetSize` 与 `PeakPagefileUsage`，后者作为进程提交峰值保存于 `process_peak_private_bytes`。这些是进程生命周期累计峰值，不能在驻留会话中冒充单请求增量，也不等于物理 SSD 读量。内存诊断与算子/logits 诊断一样，不进入性能汇总。
+
+`scripts/calibrate_memory.py` 串行执行聊天/代码/长输入三组有界内存诊断，生成绑定模型 SHA256、可执行文件 SHA256、内存配置、硬件与负载文件的校准。基准只有显式传入 `--memory-calibration PATH` 才采用它；任何身份/配置改变、失败样本、长输入覆盖不足、非法峰值或不足的安全余量都会拒绝。正式请求前仍重新检查系统资源。校准预算为完整映射文件 + 实测进程提交峰值 + `max(256MiB, 峰值的25%)` + 原系统预留，不再次叠加已包含在进程峰值中的 KV/循环/计算缓冲，也不把进程工作集峰值当整份权重已驻留的证明。它仅适用于对应有界配置与负载，不是通用内存上限。
+
 运行记录新增显式 `recurrent_state=f32`、系统提交量/额度、进程累计缺页和累计 I/O 字节。进程缺页包含软缺页，I/O 包含缓存与其他句柄传输，二者都不能当作物理 SSD 读量或硬缺页测量；驻留会话内这些进程累计数不会按请求归零。系统、进程和 GPU 是不同记账视图，不能相加。
 
 `benchmarks/representative-workloads.json` 按用户确认覆盖聊天、代码、长文，分别提供人工质量检查点；长文仍为构造材料，不能代表用户真实文档。`scripts/inspect_workloads.py` 只核对词表/模板与长度，质量状态为 `not_evaluated`；基准中没有精确答案检查的任务标记 `manual_review_required`，执行完成不等于质量通过。固定 32 token 的长输入样本与自然 EOS 的完整任务分组记录。
