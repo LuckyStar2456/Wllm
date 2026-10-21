@@ -1,7 +1,8 @@
 param(
     [Parameter(Mandatory=$true)][string]$VulkanSdk,
     [string]$BuildDirectory = 'build/vulkan-probe',
-    [ValidateRange(1,8)][int]$Jobs = 2
+    [ValidateRange(1,8)][int]$Jobs = 2,
+    [switch]$WllmValidation
 )
 $ErrorActionPreference = 'Stop'
 $projectRoot = Split-Path $PSScriptRoot -Parent
@@ -22,14 +23,17 @@ $cmake = Join-Path $installation 'Common7/IDE/CommonExtensions/Microsoft/CMake/C
 $previousSdk = $env:VULKAN_SDK
 try {
     $env:VULKAN_SDK = $sdkPath
+    $validationHook = if ($WllmValidation) { Join-Path $PSScriptRoot 'cmake/vulkan-validation.cmake' } else { '' }
     & $cmake -S vendor/llama.cpp -B $BuildDirectory -G 'Visual Studio 17 2022' -A x64 `
         "-DCMAKE_PREFIX_PATH=$sdkPath" -DBUILD_SHARED_LIBS=OFF `
+        "-DCMAKE_PROJECT_llama.cpp_INCLUDE=$validationHook" `
         -DGGML_VULKAN=ON -DGGML_NATIVE=OFF -DGGML_AVX2=ON -DGGML_AVX512=OFF `
         -DGGML_AVX512_VBMI=OFF -DGGML_AVX512_VNNI=OFF -DGGML_OPENMP=OFF `
         -DLLAMA_BUILD_TESTS=OFF -DLLAMA_BUILD_EXAMPLES=ON -DLLAMA_BUILD_TOOLS=ON `
         -DLLAMA_OPENSSL=OFF
     if ($LASTEXITCODE -ne 0) { throw 'Vulkan probe configure failed' }
-    & $cmake --build $BuildDirectory --config Release --target llama-bench llama-simple --parallel $Jobs
+    $targets = if ($WllmValidation) { @('llama-bench','llama-simple','wllm-vulkan') } else { @('llama-bench','llama-simple') }
+    & $cmake --build $BuildDirectory --config Release --target $targets --parallel $Jobs
     if ($LASTEXITCODE -ne 0) { throw 'Vulkan probe build failed' }
 } finally {
     $env:VULKAN_SDK = $previousSdk

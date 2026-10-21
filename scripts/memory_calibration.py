@@ -21,6 +21,8 @@ def validate_binding(calibration: dict[str, Any], executable_hash: str, model_ha
         raise ValueError("Incomplete/unsupported memory calibration")
     binding = calibration["binding"]
     bound_config = binding["memory_config"]
+    if bound_config.get("backend") != "CPU" or bound_config.get("gpu_layers", 0) != 0:
+        raise ValueError("CPU calibration cannot authorize GPU placement")
     if config_signature(bound_config) != binding["config_signature"] or bound_config["context"] != binding["context"]:
         raise ValueError("Calibration configuration fingerprint is inconsistent")
     context = binding["context"]
@@ -55,6 +57,8 @@ def validate_binding(calibration: dict[str, Any], executable_hash: str, model_ha
 def assess_calibrated(native: dict[str, Any], calibration: dict[str, Any]) -> dict[str, Any]:
     """A full-file-residency estimate plus measured process commit and fixed safety margin."""
     binding = calibration["binding"]
+    if native["config"]["backend"] != "CPU" or native["config"].get("gpu_layers", 0) != 0:
+        raise ValueError("CPU memory envelope cannot be applied to GPU allocations")
     if native["llama_commit"] != binding["llama_commit"] or native["cpu_build"] != binding["cpu_build"]:
         raise ValueError("Calibration backend/build mismatch")
     if config_signature(native["config"]) != binding["config_signature"]:

@@ -13,5 +13,7 @@ __pycache__/
 !/reports/resource-validation.json
 !/reports/memory-backend-validation.md
 !/reports/memory-backend-validation.json
+!/reports/vulkan-validation.md
+!/reports/vulkan-validation.json
 /configs/local.json
 *.user

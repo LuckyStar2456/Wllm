@@ -30,6 +30,15 @@ python scripts/benchmark.py --profiles benchmarks/baseline-profiles.json --workl
 
 校准不修改普通推理配置、上下文、思考或精度；重新构建导致可执行文件摘要改变时也会失效。即使校准有效，资源不足仍会拒绝。核显工具链探测可用 `scripts/build_vulkan_probe.ps1 -VulkanSdk <本地SDK目录>` 在独立目录构建锁定上游的探测工具；它不为 Wllm 默认程序启用核显，也不证明模型/状态操作已验收。
 
+Vulkan 正确性实验使用同一份 Wllm 模板/采样/计量代码，独立构建，不修改上游源码或默认 CPU 构建：
+
+```powershell
+./scripts/build_vulkan_probe.ps1 -VulkanSdk build/toolchains/VulkanSDK-1.4.363.0 -WllmValidation
+python scripts/validate_vulkan.py --gpu-layers 2 --output reports/vulkan-local
+```
+
+独立程序为 `build/vulkan-probe/bin/Release/wllm-vulkan.exe`，通过 `--gpu-layers N` 显式放置；0 为 CPU，普通 CPU 程序拒绝非零值。固定依赖把输出层计入层数，2 表示输出层与最后一个注意力层，不代表两个循环/注意力计算层。校验使用完整词表 logits，失败后停止，不转入性能比较；可用 `--disable-f16` 单独检查更高计算精度候选，KV 仍为 F16。该开关仅设置子进程环境，不修改系统环境。当前候选未通过数值门槛，详见[Vulkan 报告](../reports/vulkan-validation.md)。CPU 内存校准明确拒绝任何 GPU 放置，不能复用为核显准入。
+
 ```powershell
 ./scripts/build.ps1
 ```

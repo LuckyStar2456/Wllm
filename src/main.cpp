@@ -29,6 +29,9 @@ using namespace wllm;
 namespace fs = std::filesystem;
 using Clock = std::chrono::steady_clock;
 using ModelPtr = std::unique_ptr<llama_model, decltype(&llama_model_free)>;
+#ifndef WLLM_VULKAN
+#define WLLM_VULKAN 0
+#endif
 static std::atomic<bool> interrupted{false};
 static void check_cpu_target() {
     int features[4]{};
@@ -205,6 +208,7 @@ static void preflight(State & s, bool enforce = true) {
     const auto heads_key = gguf_find_key(meta.get(), "qwen35.attention.head_count_kv");
     const auto interval = meta_u32(meta.get(), "qwen35.full_attention_interval");
     const auto layers = meta_u32(meta.get(), "qwen35.block_count");
+    if (uint32_t(c.gpu_layers) > layers + 1) throw std::runtime_error("Requested GPU layers exceed this model including its output layer; refusing implicit placement change");
     if (!interval || layers % interval || gguf_find_key(meta.get(), "qwen35.attention.recurrent_layers") >= 0)
         throw std::runtime_error("Resource estimate requires the validated qwen35 periodic layer layout");
     uint64_t heads = 0;
@@ -250,6 +254,7 @@ static void preflight(State & s, bool enforce = true) {
     const uint64_t physical_required = estimated + additional_copy + reserve;
     const uint64_t commit_required = kv + recurrent + workspace + additional_copy + reserve;
     std::vector<std::string> reasons;
+    if (c.gpu_layers) reasons.push_back("experimental_vulkan_memory_requires_separate_calibration");
     if (physical_required > resources.at("physical_available_bytes").get<uint64_t>()) reasons.push_back("available_physical_below_conservative_resident_budget");
     if (commit_required > headroom) reasons.push_back("system_commit_headroom_below_estimate");
     if (c.cpu_weight_repacking) reasons.push_back("experimental_repacking_not_numerically_accepted");
@@ -266,6 +271,7 @@ static void preflight(State & s, bool enforce = true) {
         {"additional_commit_budget_bytes", commit_required}, {"peaks_calibrated", false},
         {"performance_preflight_eligible", reasons.empty()}, {"performance_rejection_reasons", reasons},
         {"inference_policy", "performance screening is stricter than ordinary inference; no automatic setting changes"}};
+    if (c.gpu_layers) s.identity["resource_ledger"]["estimate_scope"]="CPU reference estimate only; Vulkan driver/device peaks are not calibrated";
     if (!enforce) return;
     if (estimated + reserve > m.ullTotalPhys || kv + recurrent + (512ULL << 20) + reserve > m.ullAvailPageFile || m.ullAvailPhys < reserve) {
         std::ostringstream error;
@@ -326,6 +332,19 @@ static std::string run(State & s, const std::string & prompt, const std::string 
     { std::lock_guard<std::mutex> lock(s.mutex); s.metrics.stage="loading"; s.metrics.load_start=s.now(); }
     llama_model_params mp=llama_model_default_params();
     mp.n_gpu_layers=0; mp.load_mode=LLAMA_LOAD_MODE_MMAP; mp.progress_callback=load_progress; mp.progress_callback_user_data=&s;
+    ggml_backend_dev_t devices[2] = {nullptr,nullptr};
+    if (c.gpu_layers) {
+        for (size_t i=0;i<ggml_backend_dev_count();++i) {
+            auto device = ggml_backend_dev_get(i);
+            if (std::string(ggml_backend_reg_name(ggml_backend_dev_backend_reg(device))) != "Vulkan") continue;
+            if (devices[0]) throw std::runtime_error("Validation requires exactly one Vulkan device; refusing ambiguous placement");
+            devices[0]=device;
+        }
+        if (!devices[0]) throw std::runtime_error("Requested Vulkan placement has no device; refusing CPU fallback");
+        mp.devices=devices; mp.n_gpu_layers=c.gpu_layers;
+        std::lock_guard<std::mutex> lock(s.mutex);
+        s.identity["gpu_device"]={{"name",ggml_backend_dev_name(devices[0])},{"description",ggml_backend_dev_description(devices[0])}};
+    }
     mp.use_extra_bufts=c.cpu_weight_repacking;
     mp.vocab_only=!inspect_path.empty();
     if (!model) model.reset(llama_model_load_from_file(c.model.c_str(),mp));
@@ -363,7 +382,7 @@ static std::string run(State & s, const std::string & prompt, const std::string 
     cp.n_threads=c.threads; cp.n_threads_batch=c.effective_threads_batch();
     cp.type_k=GGML_TYPE_F16; cp.type_v=GGML_TYPE_F16;
     cp.flash_attn_type=LLAMA_FLASH_ATTN_TYPE_DISABLED;
-    cp.offload_kqv=false; cp.op_offload=false; cp.no_perf=false;
+    cp.offload_kqv=c.gpu_layers>0; cp.op_offload=false; cp.no_perf=false;
     cp.abort_callback=abort_callback; cp.abort_callback_data=&s;
     if (s.profile.operators) { cp.cb_eval=Profile::callback; cp.cb_eval_user_data=&s.profile; }
     std::unique_ptr<llama_context,decltype(&llama_free)> ctx(llama_init_from_model(model.get(),cp),llama_free);
@@ -470,6 +489,7 @@ static void usage() {
         "  --profile (phase timings) --profile-ops (intrusive operator diagnostic)\n"
         "  --resources PATH (write resource/CPU budget report; no inference or prompt read)\n"
         "  --memory-diagnostic (allocation/OS peaks; excluded from performance benchmarks)\n"
+        "  --gpu-layers N (experimental Vulkan validation build only; default 0)\n"
         "Metrics: stderr + JSONL; generated text: stdout. Ctrl+C cancels.\n";
 }
 
@@ -567,7 +587,7 @@ static int main_utf8(int argc,char ** argv) {
         }
         std::string prompt,system,inspect,cancel_file,logits_file,resources_file;
         bool prompt_set=false, quiet=false, interactive=false, profile=false, profile_ops=false, memory_diagnostic=false;
-        const std::map<std::string,std::string> ints={{"--context","context"},{"--threads","threads"},{"--threads-batch","threads_batch"},{"--batch","batch"},{"--max-tokens","max_tokens"},{"--seed","seed"}};
+        const std::map<std::string,std::string> ints={{"--context","context"},{"--threads","threads"},{"--threads-batch","threads_batch"},{"--batch","batch"},{"--gpu-layers","gpu_layers"},{"--max-tokens","max_tokens"},{"--seed","seed"}};
         const std::map<std::string,std::string> bools={{"--thinking","thinking"},{"--persistent-threadpool","persistent_threadpool"},{"--prefill-last-only","prefill_last_only"},{"--cpu-weight-repacking","cpu_weight_repacking"}};
         for(int i=1;i<argc;++i) {
             const std::string arg=argv[i];
@@ -594,6 +614,7 @@ static int main_utf8(int argc,char ** argv) {
             else throw std::runtime_error("Unknown argument: " + arg);
         }
         const auto config=Config::parse(settings);
+        if (config.gpu_layers && !WLLM_VULKAN) throw std::runtime_error("Vulkan was not compiled into this executable; use the separate validation build");
         if (!resources_file.empty()) {
             if (prompt_set || interactive || !inspect.empty() || !logits_file.empty() || profile || profile_ops || memory_diagnostic || !cancel_file.empty() || !system.empty())
                 throw std::runtime_error("--resources is a standalone probe; do not combine with request/diagnostic options");
@@ -603,7 +624,7 @@ static int main_utf8(int argc,char ** argv) {
                 {"llama_commit",WLLM_LLAMA_COMMIT}, {"cpu_build",WLLM_CPU_TARGET},
                 {"system",system_resources()}, {"cpu",cpu_capabilities()}, {"dxgi",dxgi_adapters()}, {"config",config.dump()},
                 {"backends", {{"CPU", "compiled; model execution checked separately"},
-                    {"Vulkan", "not compiled into this executable"}, {"SYCL", "not compiled into this executable"},
+                    {"Vulkan", WLLM_VULKAN ? "compiled; experimental validation only" : "not compiled into this executable"}, {"SYCL", "not compiled into this executable"},
                     {"OpenVINO", "not verified in this executable"}}}};
             if (!config.model.empty()) { preflight(state, false); report["model"] = state.identity; }
             else report["model"] = nullptr;

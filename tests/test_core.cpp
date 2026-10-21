@@ -9,6 +9,11 @@ int main() {
     try {
         auto c=Config::parse(json::object());
         require(c.context==4096,"4K default");
+        require(c.gpu_layers==0 && c.dump()["backend"]=="CPU","CPU remains default");
+        require(Config::parse({{"gpu_layers",2}}).dump()["backend"]=="Vulkan","explicit Vulkan placement recorded");
+        require(throws([]{Config::parse({{"gpu_layers",-1}});}),"no implicit GPU layer count");
+        require(throws([]{Config::parse({{"gpu_layers",2.5}});}),"integer GPU layer count");
+        require(throws([]{Config::parse({{"gpu_layers",2},{"cpu_weight_repacking",true}});}),"no mixed unaccepted layout candidate");
         require(c.dump()["recurrent_state"]=="f32","recurrent precision is explicit and separate from KV");
         require(!c.cpu_weight_repacking,"weight repack stays opt-in");
         require(Config::parse({{"cpu_weight_repacking",true}}).dump()["cpu_weight_repacking"]==true,"repack recorded");

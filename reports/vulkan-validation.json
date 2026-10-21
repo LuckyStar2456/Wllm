@@ -1,0 +1,748 @@
+{
+  "schema_version": 1,
+  "date": "2026-10-21",
+  "scope": "correctness-first Iris Xe screening; no performance comparison after numerical rejection",
+  "llama_commit": "f2918cabbffe8abf8e2a90c1c089085fa116c2cf",
+  "model_sha256": "0f55ce3d5a059e9e84493ed0554d78b8634d5064efcc8dc0a910f283ecaf3c34",
+  "hardware": {
+    "gpu": "Intel Iris Xe Graphics",
+    "driver": "31.0.101.4255",
+    "uma": true,
+    "shared_memory_additive_to_ram": false
+  },
+  "policy": {
+    "atol": 0.001,
+    "rtol": 0.0001,
+    "max_kl": 1e-06,
+    "scope": "existing CPU ISA numerical threshold, fixed before GPU tests; not relaxed after results",
+    "timing_eligible": false
+  },
+  "performance": {
+    "status": "not_run_failed_correctness",
+    "formal_samples": 0,
+    "speedup": null
+  },
+  "default_backend": "CPU",
+  "default_cpu_executable_sha256": "c2b35d0072203fd4c7ebc9cd107921bbb4e58aade8ba8a8e71afd41358bac661",
+  "candidates": [
+    {
+      "name": "initial-default",
+      "executable_sha256": "a9c98e46ca23b45aed63a1d08cc245de9a37ca033f7b4d74b07f3cec77b56e6e",
+      "status": "numeric_rejected",
+      "gpu_layers": 2,
+      "disable_f16_compute": false,
+      "controlled_backend_environment": false,
+      "numeric": {
+        "input_tokens": 18,
+        "vocabulary_size": 248320,
+        "max_abs_delta": 0.17190730571746826,
+        "logits_close": false,
+        "softmax_kl": 4.946262840058686e-06,
+        "kl_passed": false,
+        "tokens_equal": true,
+        "output_equal": true,
+        "numeric_passed": false
+      },
+      "effective_config": {
+        "context": 4096,
+        "threads": 4,
+        "batch": 128,
+        "threads_batch": 4,
+        "persistent_threadpool": false,
+        "prefill_last_only": false,
+        "max_tokens": 32,
+        "temperature": 1.0,
+        "top_k": 20,
+        "top_p": 0.95,
+        "min_p": 0.0,
+        "repeat_penalty": 1.0,
+        "repeat_last_n": 64,
+        "presence_penalty": 1.5,
+        "frequency_penalty": 0.0,
+        "seed": 42,
+        "thinking": true,
+        "refresh_ms": 500,
+        "timeout_s": 900.0,
+        "reserve_mib": 1024.0,
+        "backend": "Vulkan",
+        "gpu_layers": 2,
+        "cache_k": "f16",
+        "cache_v": "f16",
+        "recurrent_state": "f32",
+        "flash_attention": false,
+        "context_shift": false,
+        "cpu_weight_repacking": false
+      },
+      "gpu_device": {
+        "name": "Vulkan0",
+        "description": "Intel(R) Iris(R) Xe Graphics"
+      },
+      "backend_environment": {
+        "recorded": false
+      },
+      "allocation_observations": [
+        {
+          "phase": "context_ready",
+          "buffers": [
+            {
+              "buffer_type": "Vulkan0",
+              "model_bytes": 966428672,
+              "context_bytes": 16777216,
+              "compute_bytes": 140774912
+            },
+            {
+              "buffer_type": "Vulkan_Host",
+              "model_bytes": 0,
+              "context_bytes": 0,
+              "compute_bytes": 51385952
+            },
+            {
+              "buffer_type": "CPU",
+              "model_bytes": 0,
+              "context_bytes": 170131456,
+              "compute_bytes": 0
+            },
+            {
+              "buffer_type": "CPU_Mapped",
+              "model_bytes": 5518657536,
+              "context_bytes": 0,
+              "compute_bytes": 0
+            }
+          ],
+          "model_buffer_bytes": 6485086208,
+          "context_buffer_bytes": 186908672,
+          "compute_buffer_bytes": 192160864,
+          "process_peak_private_bytes": 1776353280,
+          "process_peak_working_set_bytes": 2402549760
+        },
+        {
+          "phase": "prefill_complete",
+          "buffers": [
+            {
+              "buffer_type": "Vulkan0",
+              "model_bytes": 966428672,
+              "context_bytes": 16777216,
+              "compute_bytes": 140774912
+            },
+            {
+              "buffer_type": "Vulkan_Host",
+              "model_bytes": 0,
+              "context_bytes": 0,
+              "compute_bytes": 51385952
+            },
+            {
+              "buffer_type": "CPU",
+              "model_bytes": 0,
+              "context_bytes": 170131456,
+              "compute_bytes": 0
+            },
+            {
+              "buffer_type": "CPU_Mapped",
+              "model_bytes": 5518657536,
+              "context_bytes": 0,
+              "compute_bytes": 0
+            }
+          ],
+          "model_buffer_bytes": 6485086208,
+          "context_buffer_bytes": 186908672,
+          "compute_buffer_bytes": 192160864,
+          "process_peak_private_bytes": 1856880640,
+          "process_peak_working_set_bytes": 5664407552
+        },
+        {
+          "phase": "before_context_release",
+          "buffers": [
+            {
+              "buffer_type": "Vulkan0",
+              "model_bytes": 966428672,
+              "context_bytes": 16777216,
+              "compute_bytes": 140774912
+            },
+            {
+              "buffer_type": "Vulkan_Host",
+              "model_bytes": 0,
+              "context_bytes": 0,
+              "compute_bytes": 51385952
+            },
+            {
+              "buffer_type": "CPU",
+              "model_bytes": 0,
+              "context_bytes": 170131456,
+              "compute_bytes": 0
+            },
+            {
+              "buffer_type": "CPU_Mapped",
+              "model_bytes": 5518657536,
+              "context_bytes": 0,
+              "compute_bytes": 0
+            }
+          ],
+          "model_buffer_bytes": 6485086208,
+          "context_buffer_bytes": 186908672,
+          "compute_buffer_bytes": 192160864,
+          "process_peak_private_bytes": 1856880640,
+          "process_peak_working_set_bytes": 5688258560
+        }
+      ],
+      "state_precision_log_verified": {
+        "recurrent_R_f32": true,
+        "recurrent_S_f32": true
+      },
+      "elapsed_and_throughput_not_published_as_performance": true
+    },
+    {
+      "name": "disable-f16-compute",
+      "executable_sha256": "a9c98e46ca23b45aed63a1d08cc245de9a37ca033f7b4d74b07f3cec77b56e6e",
+      "status": "numeric_rejected",
+      "gpu_layers": 2,
+      "disable_f16_compute": true,
+      "controlled_backend_environment": true,
+      "numeric": {
+        "input_tokens": 18,
+        "vocabulary_size": 248320,
+        "max_abs_delta": 0.17278718948364258,
+        "logits_close": false,
+        "softmax_kl": 5.32866774933289e-06,
+        "kl_passed": false,
+        "tokens_equal": true,
+        "output_equal": true,
+        "numeric_passed": false
+      },
+      "effective_config": {
+        "context": 4096,
+        "threads": 4,
+        "batch": 128,
+        "threads_batch": 4,
+        "persistent_threadpool": false,
+        "prefill_last_only": false,
+        "max_tokens": 32,
+        "temperature": 1.0,
+        "top_k": 20,
+        "top_p": 0.95,
+        "min_p": 0.0,
+        "repeat_penalty": 1.0,
+        "repeat_last_n": 64,
+        "presence_penalty": 1.5,
+        "frequency_penalty": 0.0,
+        "seed": 42,
+        "thinking": true,
+        "refresh_ms": 500,
+        "timeout_s": 900.0,
+        "reserve_mib": 1024.0,
+        "backend": "Vulkan",
+        "gpu_layers": 2,
+        "cache_k": "f16",
+        "cache_v": "f16",
+        "recurrent_state": "f32",
+        "flash_attention": false,
+        "context_shift": false,
+        "cpu_weight_repacking": false
+      },
+      "gpu_device": {
+        "name": "Vulkan0",
+        "description": "Intel(R) Iris(R) Xe Graphics"
+      },
+      "backend_environment": {
+        "GGML_VK_DISABLE_F16": "1"
+      },
+      "allocation_observations": [
+        {
+          "phase": "context_ready",
+          "buffers": [
+            {
+              "buffer_type": "Vulkan0",
+              "model_bytes": 966428672,
+              "context_bytes": 16777216,
+              "compute_bytes": 140774912
+            },
+            {
+              "buffer_type": "Vulkan_Host",
+              "model_bytes": 0,
+              "context_bytes": 0,
+              "compute_bytes": 51385952
+            },
+            {
+              "buffer_type": "CPU",
+              "model_bytes": 0,
+              "context_bytes": 170131456,
+              "compute_bytes": 0
+            },
+            {
+              "buffer_type": "CPU_Mapped",
+              "model_bytes": 5518657536,
+              "context_bytes": 0,
+              "compute_bytes": 0
+            }
+          ],
+          "model_buffer_bytes": 6485086208,
+          "context_buffer_bytes": 186908672,
+          "compute_buffer_bytes": 192160864,
+          "process_peak_private_bytes": 1775927296,
+          "process_peak_working_set_bytes": 2393538560
+        },
+        {
+          "phase": "prefill_complete",
+          "buffers": [
+            {
+              "buffer_type": "Vulkan0",
+              "model_bytes": 966428672,
+              "context_bytes": 16777216,
+              "compute_bytes": 140774912
+            },
+            {
+              "buffer_type": "Vulkan_Host",
+              "model_bytes": 0,
+              "context_bytes": 0,
+              "compute_bytes": 51385952
+            },
+            {
+              "buffer_type": "CPU",
+              "model_bytes": 0,
+              "context_bytes": 170131456,
+              "compute_bytes": 0
+            },
+            {
+              "buffer_type": "CPU_Mapped",
+              "model_bytes": 5518657536,
+              "context_bytes": 0,
+              "compute_bytes": 0
+            }
+          ],
+          "model_buffer_bytes": 6485086208,
+          "context_buffer_bytes": 186908672,
+          "compute_buffer_bytes": 192160864,
+          "process_peak_private_bytes": 1812451328,
+          "process_peak_working_set_bytes": 6468882432
+        },
+        {
+          "phase": "before_context_release",
+          "buffers": [
+            {
+              "buffer_type": "Vulkan0",
+              "model_bytes": 966428672,
+              "context_bytes": 16777216,
+              "compute_bytes": 140774912
+            },
+            {
+              "buffer_type": "Vulkan_Host",
+              "model_bytes": 0,
+              "context_bytes": 0,
+              "compute_bytes": 51385952
+            },
+            {
+              "buffer_type": "CPU",
+              "model_bytes": 0,
+              "context_bytes": 170131456,
+              "compute_bytes": 0
+            },
+            {
+              "buffer_type": "CPU_Mapped",
+              "model_bytes": 5518657536,
+              "context_bytes": 0,
+              "compute_bytes": 0
+            }
+          ],
+          "model_buffer_bytes": 6485086208,
+          "context_buffer_bytes": 186908672,
+          "compute_buffer_bytes": 192160864,
+          "process_peak_private_bytes": 1812451328,
+          "process_peak_working_set_bytes": 6468882432
+        }
+      ],
+      "state_precision_log_verified": {
+        "recurrent_R_f32": true,
+        "recurrent_S_f32": true
+      },
+      "elapsed_and_throughput_not_published_as_performance": true
+    },
+    {
+      "name": "output-only",
+      "executable_sha256": "a9c98e46ca23b45aed63a1d08cc245de9a37ca033f7b4d74b07f3cec77b56e6e",
+      "status": "numeric_rejected",
+      "gpu_layers": 1,
+      "disable_f16_compute": false,
+      "controlled_backend_environment": true,
+      "numeric": {
+        "input_tokens": 18,
+        "vocabulary_size": 248320,
+        "max_abs_delta": 0.08598470687866211,
+        "logits_close": false,
+        "softmax_kl": 1.691361598637586e-06,
+        "kl_passed": false,
+        "tokens_equal": true,
+        "output_equal": true,
+        "numeric_passed": false
+      },
+      "effective_config": {
+        "context": 4096,
+        "threads": 4,
+        "batch": 128,
+        "threads_batch": 4,
+        "persistent_threadpool": false,
+        "prefill_last_only": false,
+        "max_tokens": 32,
+        "temperature": 1.0,
+        "top_k": 20,
+        "top_p": 0.95,
+        "min_p": 0.0,
+        "repeat_penalty": 1.0,
+        "repeat_last_n": 64,
+        "presence_penalty": 1.5,
+        "frequency_penalty": 0.0,
+        "seed": 42,
+        "thinking": true,
+        "refresh_ms": 500,
+        "timeout_s": 900.0,
+        "reserve_mib": 1024.0,
+        "backend": "Vulkan",
+        "gpu_layers": 1,
+        "cache_k": "f16",
+        "cache_v": "f16",
+        "recurrent_state": "f32",
+        "flash_attention": false,
+        "context_shift": false,
+        "cpu_weight_repacking": false
+      },
+      "gpu_device": {
+        "name": "Vulkan0",
+        "description": "Intel(R) Iris(R) Xe Graphics"
+      },
+      "backend_environment": {},
+      "allocation_observations": [
+        {
+          "phase": "context_ready",
+          "buffers": [
+            {
+              "buffer_type": "Vulkan0",
+              "model_bytes": 834371584,
+              "context_bytes": 0,
+              "compute_bytes": 129236992
+            },
+            {
+              "buffer_type": "Vulkan_Host",
+              "model_bytes": 0,
+              "context_bytes": 0,
+              "compute_bytes": 51385952
+            },
+            {
+              "buffer_type": "CPU",
+              "model_bytes": 0,
+              "context_bytes": 186908672,
+              "compute_bytes": 0
+            },
+            {
+              "buffer_type": "CPU_Mapped",
+              "model_bytes": 5518657536,
+              "context_bytes": 0,
+              "compute_bytes": 0
+            }
+          ],
+          "model_buffer_bytes": 6353029120,
+          "context_buffer_bytes": 186908672,
+          "compute_buffer_bytes": 180622944,
+          "process_peak_private_bytes": 1632247808,
+          "process_peak_working_set_bytes": 2117410816
+        },
+        {
+          "phase": "prefill_complete",
+          "buffers": [
+            {
+              "buffer_type": "Vulkan0",
+              "model_bytes": 834371584,
+              "context_bytes": 0,
+              "compute_bytes": 129236992
+            },
+            {
+              "buffer_type": "Vulkan_Host",
+              "model_bytes": 0,
+              "context_bytes": 0,
+              "compute_bytes": 51385952
+            },
+            {
+              "buffer_type": "CPU",
+              "model_bytes": 0,
+              "context_bytes": 186908672,
+              "compute_bytes": 0
+            },
+            {
+              "buffer_type": "CPU_Mapped",
+              "model_bytes": 5518657536,
+              "context_bytes": 0,
+              "compute_bytes": 0
+            }
+          ],
+          "model_buffer_bytes": 6353029120,
+          "context_buffer_bytes": 186908672,
+          "compute_buffer_bytes": 180622944,
+          "process_peak_private_bytes": 1642397696,
+          "process_peak_working_set_bytes": 6289715200
+        },
+        {
+          "phase": "before_context_release",
+          "buffers": [
+            {
+              "buffer_type": "Vulkan0",
+              "model_bytes": 834371584,
+              "context_bytes": 0,
+              "compute_bytes": 129236992
+            },
+            {
+              "buffer_type": "Vulkan_Host",
+              "model_bytes": 0,
+              "context_bytes": 0,
+              "compute_bytes": 51385952
+            },
+            {
+              "buffer_type": "CPU",
+              "model_bytes": 0,
+              "context_bytes": 186908672,
+              "compute_bytes": 0
+            },
+            {
+              "buffer_type": "CPU_Mapped",
+              "model_bytes": 5518657536,
+              "context_bytes": 0,
+              "compute_bytes": 0
+            }
+          ],
+          "model_buffer_bytes": 6353029120,
+          "context_buffer_bytes": 186908672,
+          "compute_buffer_bytes": 180622944,
+          "process_peak_private_bytes": 1645617152,
+          "process_peak_working_set_bytes": 6292905984
+        }
+      ],
+      "state_precision_log_verified": {
+        "recurrent_R_f32": true,
+        "recurrent_S_f32": true
+      },
+      "elapsed_and_throughput_not_published_as_performance": true
+    },
+    {
+      "name": "final-default-controlled-environment",
+      "executable_sha256": "6c19dede61b9a439fc82be697b0d258e503aa3fbacad93db25177d6bb469e71c",
+      "status": "numeric_rejected",
+      "gpu_layers": 2,
+      "disable_f16_compute": false,
+      "controlled_backend_environment": true,
+      "numeric": {
+        "input_tokens": 18,
+        "vocabulary_size": 248320,
+        "max_abs_delta": 0.17190730571746826,
+        "logits_close": false,
+        "softmax_kl": 4.946262840058686e-06,
+        "kl_passed": false,
+        "tokens_equal": true,
+        "output_equal": true,
+        "numeric_passed": false
+      },
+      "effective_config": {
+        "context": 4096,
+        "threads": 4,
+        "batch": 128,
+        "threads_batch": 4,
+        "persistent_threadpool": false,
+        "prefill_last_only": false,
+        "max_tokens": 32,
+        "temperature": 1.0,
+        "top_k": 20,
+        "top_p": 0.95,
+        "min_p": 0.0,
+        "repeat_penalty": 1.0,
+        "repeat_last_n": 64,
+        "presence_penalty": 1.5,
+        "frequency_penalty": 0.0,
+        "seed": 42,
+        "thinking": true,
+        "refresh_ms": 500,
+        "timeout_s": 900.0,
+        "reserve_mib": 1024.0,
+        "backend": "Vulkan",
+        "gpu_layers": 2,
+        "cache_k": "f16",
+        "cache_v": "f16",
+        "recurrent_state": "f32",
+        "flash_attention": false,
+        "context_shift": false,
+        "cpu_weight_repacking": false
+      },
+      "gpu_device": {
+        "name": "Vulkan0",
+        "description": "Intel(R) Iris(R) Xe Graphics"
+      },
+      "backend_environment": {},
+      "allocation_observations": [
+        {
+          "phase": "context_ready",
+          "buffers": [
+            {
+              "buffer_type": "Vulkan0",
+              "model_bytes": 966428672,
+              "context_bytes": 16777216,
+              "compute_bytes": 140774912
+            },
+            {
+              "buffer_type": "Vulkan_Host",
+              "model_bytes": 0,
+              "context_bytes": 0,
+              "compute_bytes": 51385952
+            },
+            {
+              "buffer_type": "CPU",
+              "model_bytes": 0,
+              "context_bytes": 170131456,
+              "compute_bytes": 0
+            },
+            {
+              "buffer_type": "CPU_Mapped",
+              "model_bytes": 5518657536,
+              "context_bytes": 0,
+              "compute_bytes": 0
+            }
+          ],
+          "model_buffer_bytes": 6485086208,
+          "context_buffer_bytes": 186908672,
+          "compute_buffer_bytes": 192160864,
+          "process_peak_private_bytes": 1775714304,
+          "process_peak_working_set_bytes": 2393296896
+        },
+        {
+          "phase": "prefill_complete",
+          "buffers": [
+            {
+              "buffer_type": "Vulkan0",
+              "model_bytes": 966428672,
+              "context_bytes": 16777216,
+              "compute_bytes": 140774912
+            },
+            {
+              "buffer_type": "Vulkan_Host",
+              "model_bytes": 0,
+              "context_bytes": 0,
+              "compute_bytes": 51385952
+            },
+            {
+              "buffer_type": "CPU",
+              "model_bytes": 0,
+              "context_bytes": 170131456,
+              "compute_bytes": 0
+            },
+            {
+              "buffer_type": "CPU_Mapped",
+              "model_bytes": 5518657536,
+              "context_bytes": 0,
+              "compute_bytes": 0
+            }
+          ],
+          "model_buffer_bytes": 6485086208,
+          "context_buffer_bytes": 186908672,
+          "compute_buffer_bytes": 192160864,
+          "process_peak_private_bytes": 1790455808,
+          "process_peak_working_set_bytes": 6438686720
+        },
+        {
+          "phase": "before_context_release",
+          "buffers": [
+            {
+              "buffer_type": "Vulkan0",
+              "model_bytes": 966428672,
+              "context_bytes": 16777216,
+              "compute_bytes": 140774912
+            },
+            {
+              "buffer_type": "Vulkan_Host",
+              "model_bytes": 0,
+              "context_bytes": 0,
+              "compute_bytes": 51385952
+            },
+            {
+              "buffer_type": "CPU",
+              "model_bytes": 0,
+              "context_bytes": 170131456,
+              "compute_bytes": 0
+            },
+            {
+              "buffer_type": "CPU_Mapped",
+              "model_bytes": 5518657536,
+              "context_bytes": 0,
+              "compute_bytes": 0
+            }
+          ],
+          "model_buffer_bytes": 6485086208,
+          "context_buffer_bytes": 186908672,
+          "compute_buffer_bytes": 192160864,
+          "process_peak_private_bytes": 1794187264,
+          "process_peak_working_set_bytes": 6442577920
+        }
+      ],
+      "state_precision_log_verified": {
+        "recurrent_R_f32": true,
+        "recurrent_S_f32": true
+      },
+      "elapsed_and_throughput_not_published_as_performance": true
+    }
+  ],
+  "cpu_regression": {
+    "atol": 0.001,
+    "rtol": 0.0001,
+    "max_kl": 1e-06,
+    "candidate_repacking": false,
+    "results": [
+      {
+        "prompt_index": 0,
+        "max_abs_logit_delta": 0.0,
+        "logits_close": true,
+        "softmax_kl": 0.0,
+        "tokens_equal": true,
+        "output_equal": true,
+        "vocabulary_size": 248320
+      },
+      {
+        "prompt_index": 1,
+        "max_abs_logit_delta": 0.0,
+        "logits_close": true,
+        "softmax_kl": 0.0,
+        "tokens_equal": true,
+        "output_equal": true,
+        "vocabulary_size": 248320
+      }
+    ]
+  },
+  "gpu_build_cpu_reference_vs_previous_cpu": {
+    "vocabulary_size": 248320,
+    "max_abs_delta": 0.0,
+    "logits_close": true,
+    "softmax_kl": 0.0,
+    "kl_passed": true,
+    "tokens_equal": true
+  },
+  "checks": {
+    "native_checks_passed": 36,
+    "python_numerical_tests_passed": 4,
+    "python_memory_calibration_tests_passed": 8,
+    "python_resource_tests_passed": 9,
+    "python_benchmark_tests_passed": 2,
+    "gpu_lifecycle": {
+      "cpu_build_rejects_gpu_no_fallback": true,
+      "layer_count_cannot_be_implicitly_clamped": true,
+      "timeout_exits_and_records_end": true,
+      "cancel_exits_and_records_end": true
+    }
+  },
+  "placement_scope": {
+    "two_layers": "output + final full-attention layer; no recurrent layer",
+    "one_layer": "output only",
+    "full_offload_checked": false,
+    "per_step_decode_logits_checked": false,
+    "long_input_checked": false,
+    "prefix_restore_checked": false,
+    "speculative_rollback_checked": false
+  },
+  "diagnosis": {
+    "output_only_also_fails": true,
+    "f16_compute_disable_not_sufficient": true,
+    "source_difference_candidate": "CPU Q8_K vs Vulkan MMVQ Q8_1 temporary activation paths",
+    "exact_root_cause_confirmed": false,
+    "next": "capture identical output-projection input and weight tensors; locate quantization/dot/reduction divergence before retesting"
+  }
+}

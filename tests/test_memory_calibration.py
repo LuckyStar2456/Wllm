@@ -84,6 +84,15 @@ class CalibrationTests(unittest.TestCase):
         self.assertFalse(result["performance_preflight_eligible"])
         self.assertEqual(len(result["performance_rejection_reasons"]), 2)
 
+    def test_cpu_calibration_cannot_authorize_gpu(self):
+        native, calibration = fixture()
+        native["config"] = {**native["config"], "gpu_layers": 2}
+        with self.assertRaises(ValueError):
+            memory.assess_calibrated(native, calibration)
+        calibration["binding"]["memory_config"] = {**calibration["binding"]["memory_config"], "backend": "Vulkan"}
+        with self.assertRaises(ValueError):
+            memory.validate_binding(calibration, "exe", "model", "workloads")
+
     def test_changed_context_batch_state_build_or_hardware_rejected(self):
         native, calibration = fixture()
         for changes in [("config", "context", 8192), ("config", "batch", 64), ("config", "cache_k", "q8_0"),

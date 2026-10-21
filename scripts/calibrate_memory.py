@@ -22,6 +22,8 @@ def main() -> None:
     output = (args.output or ROOT / "reports" / f"memory-calibration-{time.time_ns()}").resolve()
     output.mkdir(parents=True, exist_ok=False)
     native = capture_native(args.exe, args.config, output / "native.json")
+    if native["config"]["backend"] != "CPU" or native["config"].get("gpu_layers", 0) != 0:
+        parser.error("This calibration observes CPU only; GPU needs separate driver/device accounting")
     config = read_json(args.config)
     config["model"] = str((ROOT / config["model"]).resolve())
     model = Path(config["model"])
