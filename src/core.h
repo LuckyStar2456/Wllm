@@ -13,7 +13,7 @@ using json = nlohmann::ordered_json;
 
 struct Config {
     std::string model, record = "reports/runs.jsonl";
-    int context = 4096, threads = 4, threads_batch = 0, batch = 128, max_tokens = -1;
+    int context = 16384, threads = 4, threads_batch = 0, batch = 128, max_tokens = -1;
     bool persistent_threadpool = false, prefill_last_only = false;
     bool cpu_weight_repacking = false;
     int gpu_layers = 0; // Experimental Vulkan placement; zero preserves the CPU path.
@@ -55,7 +55,7 @@ struct Config {
         return c;
     }
     void validate() const {
-        if (context < 512 || context > 262144) throw std::runtime_error("context must be 512..262144 (default 4096); no automatic shrinking");
+        if (context < 512 || context > 262144) throw std::runtime_error("context must be 512..262144 (default 16384); no automatic shrinking");
         if (threads < 1 || threads > 256 || threads_batch < 0 || threads_batch > 256 || batch < 1 || batch > context) throw std::runtime_error("Invalid threads or batch");
         if (max_tokens != -1 && max_tokens < 1) throw std::runtime_error("max_tokens must be -1 or positive");
         if (gpu_layers < 0 || gpu_layers > 1024) throw std::runtime_error("gpu_layers must be 0..1024; no automatic placement");

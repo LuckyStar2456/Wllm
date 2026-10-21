@@ -31,7 +31,7 @@ class CpuOptimizationTests(unittest.TestCase):
                     with (output / f"{index}-{name}.stderr.txt").open("wb") as log:
                         process = subprocess.run([
                             str(EXE), "--config", str(ROOT / "configs/local.json"), "--prompt", prompt,
-                            "--context", "4096", "--threads", "4", "--threads-batch", batch_threads,
+                            "--threads", "4", "--threads-batch", batch_threads,
                             "--batch", "128", "--persistent-threadpool", pool, "--prefill-last-only", last,
                             "--seed", "42", "--max-tokens", "16", "--timeout", "240", "--quiet-metrics",
                             "--record", str(record), "--logits-file", str(logits_file),

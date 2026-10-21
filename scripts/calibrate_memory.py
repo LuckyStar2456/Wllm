@@ -18,7 +18,10 @@ def main() -> None:
     parser.add_argument("--config", type=Path, default=ROOT / "configs/local.json")
     parser.add_argument("--workloads", type=Path, default=ROOT / "benchmarks/representative-workloads.json")
     parser.add_argument("--output", type=Path)
+    parser.add_argument("--timeout", type=int, default=900, help="Explicit per-diagnostic limit; longer context may require a larger budget")
     args = parser.parse_args()
+    if args.timeout < 1:
+        parser.error("timeout must be positive")
     output = (args.output or ROOT / "reports" / f"memory-calibration-{time.time_ns()}").resolve()
     output.mkdir(parents=True, exist_ok=False)
     native = capture_native(args.exe, args.config, output / "native.json")
@@ -39,6 +42,23 @@ def main() -> None:
         parser.error("Calibration requires accepted CPU layout; repacking must be off")
     save_json(output / "config.json", config)
     cases = {case["name"]: case for case in read_json(args.workloads)}
+    # Reject insufficient context coverage before spending time on model diagnostics.
+    inspection = output / "long-inspection"
+    inspection.mkdir()
+    long_prompt = inspection / "prompt.txt"
+    long_prompt.write_text(render_prompt(cases["long-prefill-fixed"]), encoding="utf-8")
+    inspected = inspection / "inspect.json"
+    with (inspection / "stderr.txt").open("wb") as stderr:
+        subprocess.run([str(args.exe.resolve()), "--config", str(output / "config.json"),
+                        "--prompt-file", str(long_prompt), "--inspect", str(inspected),
+                        "--record", str(inspection / "run.jsonl"), "--quiet-metrics"],
+                       cwd=ROOT, stdout=subprocess.DEVNULL, stderr=stderr, check=True, timeout=60)
+    long_tokens = len(read_json(inspected)["token_ids"])
+    if long_tokens < native["config"]["context"] * 0.7:
+        calibration["rejection"] = {"reason": "long_prefill_coverage_below_70_percent",
+                                    "input_tokens": long_tokens, "context": native["config"]["context"]}
+        save_json(output / "calibration.json", calibration)
+        parser.error("Long workload covers less than 70% of the configured context; provide a context-matched --workloads manifest. No memory diagnostics were run")
     selections = [("chat", "chat-explanation", 32), ("code", "code-generation", 128), ("long", "long-prefill-fixed", 32)]
     for category, name, tokens in selections:
         case = cases[name]
@@ -48,12 +68,12 @@ def main() -> None:
         prompt.write_text(render_prompt(case), encoding="utf-8")
         record = folder / "run.jsonl"
         command = [str(args.exe.resolve()), "--config", str(output / "config.json"), "--prompt-file", str(prompt),
-                   "--record", str(record), "--seed", "42", "--max-tokens", str(tokens), "--timeout", "900",
+                   "--record", str(record), "--seed", "42", "--max-tokens", str(tokens), "--timeout", str(args.timeout),
                    "--quiet-metrics", "--memory-diagnostic"]
         with (folder / "stdout.txt").open("wb") as stdout, (folder / "stderr.txt").open("wb") as stderr:
             process = subprocess.Popen(command, cwd=ROOT, stdout=stdout, stderr=stderr)
             try:
-                code = process.wait(timeout=930)
+                code = process.wait(timeout=args.timeout + 30)
             except BaseException:
                 process.kill(); process.wait()
                 raise

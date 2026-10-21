@@ -27,7 +27,7 @@ def compare_logits(reference: array, candidate: array) -> dict:
             "softmax_kl": kl, "kl_passed": kl <= 1e-6}
 
 
-def execute(exe: Path, config: Path, prompt: str, folder: Path, layers: int, disable_f16: bool = False) -> tuple[dict, array, bytes]:
+def execute(exe: Path, config: Path, prompt: str, folder: Path, layers: int, disable_f16: bool = False, context: int = 16384) -> tuple[dict, array, bytes]:
     folder.mkdir()
     prompt_file = folder / "prompt.txt"
     prompt_file.write_text(prompt, encoding="utf-8")
@@ -35,7 +35,7 @@ def execute(exe: Path, config: Path, prompt: str, folder: Path, layers: int, dis
     backend_log = ROOT / "reports/backend.log"
     offset = backend_log.stat().st_size if backend_log.exists() else 0
     command = [str(exe), "--config", str(config), "--prompt-file", str(prompt_file), "--gpu-layers", str(layers),
-               "--threads", "4", "--threads-batch", "4", "--batch", "128", "--context", "4096",
+               "--threads", "4", "--threads-batch", "4", "--batch", "128", "--context", str(context),
                "--seed", "42", "--max-tokens", "32", "--timeout", "900", "--quiet-metrics",
                "--record", str(record), "--logits-file", str(logits), "--memory-diagnostic"]
     environment = {key: value for key, value in os.environ.items() if not key.startswith(("GGML_VK_", "GGML_VULKAN_"))}
@@ -56,7 +56,7 @@ def execute(exe: Path, config: Path, prompt: str, folder: Path, layers: int, dis
     start, end = events[0], events[-1]
     if code or end["metrics"]["end_reason"] != "max_tokens" or len(end["token_ids"]) != 32:
         raise RuntimeError(f"Incomplete numerical diagnostic: {folder}")
-    if start["config"]["gpu_layers"] != layers or start["config"]["context"] != 4096:
+    if start["config"]["gpu_layers"] != layers or start["config"]["context"] != context:
         raise RuntimeError("Effective placement/context mismatch")
     if layers:
         buffers = end["identity"]["allocation_observations"][0]["buffers"]
@@ -72,6 +72,7 @@ def main() -> None:
     parser.add_argument("--exe", type=Path, default=ROOT / "build/vulkan-probe/bin/Release/wllm-vulkan.exe")
     parser.add_argument("--config", type=Path, default=ROOT / "configs/local.json")
     parser.add_argument("--gpu-layers", type=int, default=2)
+    parser.add_argument("--context", type=int, help="Default: context in the supplied config; no hidden 4K override")
     parser.add_argument("--disable-f16", action="store_true", help="Independent higher-compute-precision candidate; KV remains F16")
     parser.add_argument("--output", type=Path)
     args = parser.parse_args()
@@ -80,11 +81,14 @@ def main() -> None:
     output = (args.output or ROOT / "reports" / f"vulkan-correctness-{time.time_ns()}").resolve()
     output.mkdir(parents=True, exist_ok=False)
     config = read_json(args.config)
+    context = config.get("context", 16384) if args.context is None else args.context
+    if not 512 <= context <= 262144:
+        parser.error("context must be 512..262144")
     model = (ROOT / config["model"]).resolve()
     model_stat = model.stat()
     config_hash = digest(args.config)
     report = {"status": "running", "exe_sha256": digest(args.exe), "model_sha256": digest(model),
-              "context": 4096, "gpu_layers": args.gpu_layers,
+              "context": context, "gpu_layers": args.gpu_layers,
               "disable_f16_compute": args.disable_f16,
               "policy": {"atol": 1e-3, "rtol": 1e-4, "max_kl": 1e-6,
                          "scope": "existing CPU ISA numerical threshold, fixed before GPU tests; not relaxed after results",
@@ -95,7 +99,7 @@ def main() -> None:
              ("long", render_prompt(next(row for row in workloads if row["name"] == "long-prefill-fixed")))]
     try:
         for name, prompt in cases:
-            values = [execute(args.exe.resolve(), args.config.resolve(), prompt, output / f"{name}-{backend}", layers, args.disable_f16)
+            values = [execute(args.exe.resolve(), args.config.resolve(), prompt, output / f"{name}-{backend}", layers, args.disable_f16, context)
                       for backend, layers in (("cpu", 0), ("vulkan", args.gpu_layers))]
             current = model.stat()
             if (current.st_size, current.st_mtime_ns) != (model_stat.st_size, model_stat.st_mtime_ns) or digest(args.exe) != report["exe_sha256"] or digest(args.config) != config_hash:

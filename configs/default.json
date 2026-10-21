@@ -1,6 +1,6 @@
 {
   "model": "",
-  "context": 4096,
+  "context": 16384,
   "threads": 4,
   "threads_batch": 0,
   "persistent_threadpool": false,

@@ -94,7 +94,7 @@ class NativeProbeTests(unittest.TestCase):
             budget = model["resource_ledger"]
             self.assertFalse(budget["performance_preflight_eligible"])
             self.assertIn("available_physical_below_conservative_resident_budget", budget["performance_rejection_reasons"])
-            self.assertEqual(model["kv_estimate_bytes"], 128 * 1024**2)
+            self.assertEqual(model["kv_estimate_bytes"], settings["context"] * 32768)
             self.assertEqual(model["recurrent_estimate_bytes"], int(50.25 * 1024**2))
             self.assertIsNone(budget["components"]["mapped_file_resident_bytes"])
             self.assertFalse(budget["peaks_calibrated"])

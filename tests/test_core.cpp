@@ -8,7 +8,8 @@ static bool throws(const std::function<void()> & fn) { try { fn(); return false;
 int main() {
     try {
         auto c=Config::parse(json::object());
-        require(c.context==4096,"4K default");
+        require(c.context==16384,"16K default");
+        require(Config::parse({{"context",4096}}).context==4096,"explicit context override preserved");
         require(c.gpu_layers==0 && c.dump()["backend"]=="CPU","CPU remains default");
         require(Config::parse({{"gpu_layers",2}}).dump()["backend"]=="Vulkan","explicit Vulkan placement recorded");
         require(throws([]{Config::parse({{"gpu_layers",-1}});}),"no implicit GPU layer count");
@@ -30,7 +31,7 @@ int main() {
         require(throws([]{Config::parse({{"temperature",-1}});}),"bad sampling");
         require(throws([]{Config::parse({{"context",4096.5}});}),"reject fractional context");
         require(throws([]{Config::parse({{"seed",-1}});}),"reject unsigned wraparound");
-        require(throws([]{check_context(4096,4096);}),"no silent truncation");
+        require(throws([]{check_context(16384,16384);}),"no silent truncation at 16K");
         Metrics m;
         require(!m.average_tps() && !m.window_tps(10),"empty output");
         m.token_times={2};

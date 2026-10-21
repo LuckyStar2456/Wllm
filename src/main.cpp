@@ -476,7 +476,7 @@ static std::string run(State & s, const std::string & prompt, const std::string 
 static void usage() {
     std::cout << "Wllm 0.2.0 - local Qwen3.5 Q4_K_M text inference\n"
         "  wllm --config configs/local.json --prompt \"Hello\"\n"
-        "  --model PATH --context N (default 4096) --threads N --batch N\n"
+        "  --model PATH --context N (default 16384) --threads N --batch N\n"
         "  --threads-batch N (0 = threads) --persistent-threadpool on|off\n"
         "  --prefill-last-only on|off (skip unused intermediate logits)\n"
         "  --cpu-weight-repacking on|off (experimental CPU weight layout)\n"

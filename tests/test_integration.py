@@ -63,7 +63,7 @@ class PrototypeAcceptance(unittest.TestCase):
         _, summary = self.run_case("template", ["--prompt", prompt, "--inspect", str(inspection)])
         data = json.loads(inspection.read_text(encoding="utf-8"))
         self.assertEqual(data["rendered_prompt"], f"<|im_start|>user\n{prompt}<|im_end|>\n<|im_start|>assistant\n<think>\n")
-        self.assertEqual(data["config"]["context"], 4096)
+        self.assertEqual(data["config"]["context"], 16384)
         self.assertEqual(summary["metrics"]["end_reason"], "inspected")
 
     def test_02_default_thinking_completion(self) -> None:

@@ -1,6 +1,6 @@
 # Wllm 0.2 使用说明
 
-本机 Windows / CPU 文本路径。默认上下文 **4096 token**，用户可以显式调整；程序不会因内存不足或输入过长自动缩短上下文、截断输入或改变精度。默认思考开启，采用现有模型记录的 temperature=1、top_k=20、top_p=0.95、presence_penalty=1.5。
+本机 Windows / CPU 文本路径。默认上下文 **16384 token（16K）**，用户可以显式调整；程序不会因内存不足或输入过长自动缩短上下文、截断输入或改变精度。默认思考开启，采用现有模型记录的 temperature=1、top_k=20、top_p=0.95、presence_penalty=1.5。
 
 ## 准备与构建
 
@@ -24,11 +24,13 @@ python scripts/benchmark.py --profiles benchmarks/baseline-profiles.json --workl
 需要校准旧的 3GiB 工作区预留时，先做有界内存诊断，再显式使用对应记录；校准会真实执行当前模型，但其计时不进入正式性能汇总：
 
 ```powershell
-python scripts/calibrate_memory.py --output reports/memory-local
-python scripts/benchmark.py --profiles benchmarks/baseline-profiles.json --workloads benchmarks/representative-workloads.json --memory-calibration reports/memory-local/calibration.json --repeats 3
+python scripts/calibrate_memory.py --workloads benchmarks/context16k-workloads.json --timeout 3600 --output reports/memory-local
+python scripts/benchmark.py --profiles benchmarks/baseline-profiles.json --workloads benchmarks/context16k-workloads.json --memory-calibration reports/memory-local/calibration.json --repeats 3
 ```
 
 校准不修改普通推理配置、上下文、思考或精度；重新构建导致可执行文件摘要改变时也会失效。即使校准有效，资源不足仍会拒绝。核显工具链探测可用 `scripts/build_vulkan_probe.ps1 -VulkanSdk <本地SDK目录>` 在独立目录构建锁定上游的探测工具；它不为 Wllm 默认程序启用核显，也不证明模型/状态操作已验收。
+
+16K 校准需覆盖至少 70% 上下文的长输入。原 `representative-workloads.json` 约 3K 的长任务不满足该条件，校准工具会在实际内存诊断前通过词表检查并拒绝。新增 `context16k-workloads.json` 提供匹配的长任务与超过旧 4K 边界的计算样本；上面是可显式启动的长时诊断命令，本轮不宣称已经完成约 13K 输入的完整校准或重复性能验收。旧 4K 校准因上下文和可执行文件变化失效。
 
 Vulkan 正确性实验使用同一份 Wllm 模板/采样/计量代码，独立构建，不修改上游源码或默认 CPU 构建：
 
@@ -38,6 +40,8 @@ python scripts/validate_vulkan.py --gpu-layers 2 --output reports/vulkan-local
 ```
 
 独立程序为 `build/vulkan-probe/bin/Release/wllm-vulkan.exe`，通过 `--gpu-layers N` 显式放置；0 为 CPU，普通 CPU 程序拒绝非零值。固定依赖把输出层计入层数，2 表示输出层与最后一个注意力层，不代表两个循环/注意力计算层。校验使用完整词表 logits，失败后停止，不转入性能比较；可用 `--disable-f16` 单独检查更高计算精度候选，KV 仍为 F16。该开关仅设置子进程环境，不修改系统环境。当前候选未通过数值门槛，详见[Vulkan 报告](../reports/vulkan-validation.md)。CPU 内存校准明确拒绝任何 GPU 放置，不能复用为核显准入。
+
+校验脚本默认读取配置中的上下文，当前为 16K；复现历史 4K 时须显式传入 `--context 4096`，不再在脚本内固定覆盖用户设置。
 
 ```powershell
 ./scripts/build.ps1
@@ -74,13 +78,13 @@ py -3.11 scripts/prepare_model.py
 
 分阶段线程、批次、执行开关、构建候选和对照方法见 [CPU 基础优化](cpu-optimization.md)。
 
-默认 4K 是当前用户选择，替代此前讨论过的 2048/262144 默认值。上下文预算包含输入与生成内容；如输入已占满预算会报错，生成触及预算以 `context_limit` 结束并明确显示，不滑动或丢弃历史。可选范围为 512–262144，是否可运行受实际资源限制。
+2026-10-21 用户将默认上下文从 4K 调整为 16K；本机 `configs/local.json` 与仓库默认配置均已同步。上下文预算包含输入与生成内容；如输入已占满预算会报错，生成触及预算以 `context_limit` 结束并明确显示，不滑动或丢弃历史。可选范围为 512–262144，是否可运行受实际资源限制。更大预算不意味着每次输入都会填满，也不等于长输入质量已验证。
 
 直接使用可执行文件可获得全部入口：
 
 ```powershell
 ./build/bin/Release/wllm.exe --help
-./build/bin/Release/wllm.exe --config configs/local.json --context 4096 --prompt '你好' --max-tokens 128
+./build/bin/Release/wllm.exe --config configs/local.json --context 16384 --prompt '你好' --max-tokens 128
 ```
 
 `--max-tokens` 是用户显式输出上限；默认 -1 表示生成到模型停止标记或上下文边界。`--timeout` 显式设置整次请求时限，默认不设限。Ctrl+C/Break 中止；测试及自动化还可使用 `--cancel-file 路径`，创建该文件触发同一中止路径。`--thinking off`、`--temperature`、`--seed` 等是可选覆盖，会在有效配置记录中明确展示，不用于默认加速。
