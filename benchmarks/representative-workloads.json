@@ -1,0 +1,63 @@
+[
+  {
+    "name": "chat-explanation",
+    "category": "chat",
+    "source": "authored representative task; not a user conversation",
+    "prompt": "请用中文向初中生解释为什么天空通常是蓝色的，控制在150字以内，并说明为什么傍晚常见红色天空。",
+    "max_tokens": 768,
+    "end_reason": "eos",
+    "quality_rubric": ["解释短波散射更强", "说明傍晚光程更长", "中文清楚且不虚构事实"]
+  },
+  {
+    "name": "chat-planning",
+    "category": "chat-long-output",
+    "source": "authored representative task; not a user conversation",
+    "prompt": "我每天只有30分钟，希望在两周内入门Python。请给出每天的学习内容和一个小练习，最后安排一个不依赖第三方库的小项目。计划应适合完全没有编程经验的人，不要求购买课程。",
+    "max_tokens": 1536,
+    "end_reason": "eos",
+    "quality_rubric": ["覆盖14天且每日任务可执行", "不依赖付费课程或第三方库", "包含练习和整合项目"]
+  },
+  {
+    "name": "code-understanding",
+    "category": "code-understanding",
+    "source": "authored representative task; not user source code",
+    "prompt": "阅读以下Python函数：\ndef first_positive(values):\n    for index in range(len(values) - 1):\n        if values[index] > 0:\n            return values[index]\n    return None\n\n输入[-2, 0, 7]时函数返回什么？指出根因，并给出同时处理空列表和最后一个元素为正数的最小修复。保留返回首个正数、没有正数返回None的语义。",
+    "max_tokens": 1024,
+    "end_reason": "eos",
+    "quality_rubric": ["原函数返回None", "指出range漏掉最后一个元素", "修复正确处理空列表和首个正数"]
+  },
+  {
+    "name": "code-generation",
+    "category": "code-generation",
+    "source": "authored representative task; not user source code",
+    "prompt": "用Python 3.11实现stable_unique(values)，输入为可哈希元素的可迭代对象，返回按首次出现顺序去重的列表。不要修改输入，不用第三方库，也不要排序。给出完整函数及空输入、重复字符串、生成器三种示例，解释时间和空间复杂度。",
+    "max_tokens": 1024,
+    "end_reason": "eos",
+    "quality_rubric": ["保持首次出现顺序", "支持一次性生成器", "不修改输入、不排序、无外部依赖", "复杂度说明与实现一致"]
+  },
+  {
+    "name": "long-document",
+    "category": "long-input",
+    "source": "authored synthetic engineering document; not real-document quality acceptance",
+    "prefix": "请阅读项目记录。关键验收编号为7319，系统内存为16GB。\n",
+    "repeat_text": "项目记录：当前模型在CPU上运行。核显与CPU共享物理内存，显存额度不能与RAM相加。性能评估分别记录加载、输入处理、首字、持续生成和完整回答。缓存命中与未命中必须分开统计。出现资源不足时应说明原因，保留用户选择的上下文和精度。\n",
+    "repeat": 44,
+    "prompt": "\n记录结束。仅回答开头的关键验收编号，不要输出任何其他正文。",
+    "max_tokens": 768,
+    "end_reason": "eos",
+    "expected_answer": "7319",
+    "quality_rubric": ["自然结束", "正文仅为7319", "这是有限事实提取，不代表完整长文理解"]
+  },
+  {
+    "name": "long-prefill-fixed",
+    "category": "long-input-fixed-output",
+    "source": "authored synthetic compute workload; not task-quality acceptance",
+    "prefix": "请阅读以下工程记录。\n",
+    "repeat_text": "工程记录：加载、输入计算、解码和完整请求分别计量。系统内存与共享显存不能重复计算。优化需要通过数值、质量、内存和稳定性检查。\n",
+    "repeat": 88,
+    "prompt": "\n请总结记录中的主要原则。",
+    "max_tokens": 32,
+    "end_reason": "max_tokens",
+    "quality_rubric": ["只检查固定32个输出token完成情况，不把截断文本当完整回答"]
+  }
+]

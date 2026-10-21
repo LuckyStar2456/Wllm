@@ -73,7 +73,7 @@ struct Config {
             {"presence_penalty", presence_penalty}, {"frequency_penalty", frequency_penalty},
             {"seed", seed}, {"thinking", thinking}, {"refresh_ms", refresh_ms}, {"timeout_s", timeout_s},
             {"reserve_mib", reserve_mib}, {"record", record}, {"backend", "CPU"},
-            {"cache_k", "f16"}, {"cache_v", "f16"}, {"flash_attention", false}, {"context_shift", false},
+            {"cache_k", "f16"}, {"cache_v", "f16"}, {"recurrent_state", "f32"}, {"flash_attention", false}, {"context_shift", false},
             {"cpu_weight_repacking", cpu_weight_repacking}};
     }
 };
@@ -86,6 +86,9 @@ struct Metrics {
     std::vector<double> token_times;
     std::vector<int32_t> token_ids;
     uint64_t working_set = 0, private_bytes = 0, available = 0, peak_working_set = 0;
+    uint64_t commit_total = 0, commit_limit = 0, page_faults = 0;
+    uint64_t io_read_bytes = 0, io_write_bytes = 0;
+    bool system_commit_available = false, io_available = false;
     bool memory_available = false;
     bool model_reused = false;
     std::optional<double> average_tps() const {
@@ -118,7 +121,12 @@ struct Metrics {
             {"working_set_bytes", memory_available ? json(working_set) : json(nullptr)},
             {"private_bytes", memory_available ? json(private_bytes) : json(nullptr)},
             {"system_available_bytes", memory_available ? json(available) : json(nullptr)},
-            {"sampled_peak_working_set_bytes", memory_available ? json(peak_working_set) : json(nullptr)}};
+            {"sampled_peak_working_set_bytes", memory_available ? json(peak_working_set) : json(nullptr)},
+            {"system_commit_total_bytes", system_commit_available ? json(commit_total) : json(nullptr)},
+            {"system_commit_limit_bytes", system_commit_available ? json(commit_limit) : json(nullptr)},
+            {"process_page_fault_count", memory_available ? json(page_faults) : json(nullptr)},
+            {"process_io_read_bytes", io_available ? json(io_read_bytes) : json(nullptr)},
+            {"process_io_write_bytes", io_available ? json(io_write_bytes) : json(nullptr)}};
     }
 };
 

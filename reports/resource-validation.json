@@ -1,0 +1,272 @@
+{
+  "schema_version": 1,
+  "date": "2026-10-21",
+  "scope": "resource readiness and bounded CPU regression; no performance improvement claim",
+  "llama_commit": "f2918cabbffe8abf8e2a90c1c089085fa116c2cf",
+  "model_sha256": "0f55ce3d5a059e9e84493ed0554d78b8634d5064efcc8dc0a910f283ecaf3c34",
+  "executables": {
+    "baseline_sha256": "49606781efdb4b242f2688c82926e51a526617aa712c3cd92e7c1db4f036bdd0",
+    "clean_candidate_sha256": "61860bd12e84d39b4b729035908a816d156b6cb362d61b483b2ea865251f0f1c",
+    "default_candidate_sha256": "028747b4d30e9707eb87080fa56102af98084684b3dcb6f2bac9f4077c9f0b9d"
+  },
+  "resource_snapshot": {
+    "unix_time_ms": 1792581501447,
+    "cpu": {
+      "source": "CPUID/XGETBV/GetLogicalProcessorInformationEx",
+      "brand": "11th Gen Intel(R) Core(TM) i5-1135G7 @ 2.40GHz",
+      "avx2_usable": true,
+      "avx512_f_usable": true,
+      "logical_processors": 8,
+      "physical_cores": 4
+    },
+    "system": {
+      "source": "Win32 GetPerformanceInfo/GetSystemPowerStatus",
+      "physical_total_bytes": 16859500544,
+      "physical_available_bytes": 7472046080,
+      "commit_total_bytes": 20520235008,
+      "commit_limit_bytes": 31891886080,
+      "commit_headroom_bytes": 11371651072,
+      "system_cache_bytes": 6381760512,
+      "process_count": 427,
+      "ac_line_status": 1,
+      "logical_processors": 8
+    },
+    "dxgi_interface_count": 4,
+    "vulkan_raw_count": 3,
+    "vulkan_unique_count": 1,
+    "devices": [
+      {
+        "identity": "8680499a-0100-0000-0002-000000000000",
+        "deviceName": "Intel(R) Iris(R) Xe Graphics",
+        "enumeration_indices": [
+          0,
+          1,
+          2
+        ],
+        "dxgi_adapter_luids": [
+          "00000000:0001049e",
+          "00000000:0001fd64",
+          "00000000:0001dbea"
+        ],
+        "cross_api_match": "valid Vulkan LUID matched to DXGI interfaces; grouped by Vulkan UUID",
+        "model_execution_verified": false
+      }
+    ]
+  },
+  "ledger": {
+    "estimate_scope": "pinned CPU qwen35, one sequence, no prefix/draft/rollback cache",
+    "source": "GGUF metadata + pinned llama-hparams.cpp/llama-model.cpp; workspace is a conservative allowance",
+    "system_at_admission": {
+      "source": "Win32 GetPerformanceInfo/GetSystemPowerStatus",
+      "physical_total_bytes": 16859500544,
+      "physical_available_bytes": 7444086784,
+      "commit_total_bytes": 20549406720,
+      "commit_limit_bytes": 31891886080,
+      "commit_headroom_bytes": 11342479360,
+      "system_cache_bytes": 6381473792,
+      "process_count": 427,
+      "ac_line_status": 1,
+      "logical_processors": 8
+    },
+    "components": {
+      "mapped_file_bytes": 5530617760,
+      "mapped_file_resident_bytes": null,
+      "attention_kv_f16_estimate_bytes": 134217728,
+      "recurrent_f32_estimate_bytes": 52690944,
+      "workspace_allowance_bytes": 3221225472,
+      "workspace_measured_bytes": null,
+      "extra_weight_copy_estimate_bytes": 0,
+      "prefix_cache_bytes": 0,
+      "draft_bytes": 0,
+      "rollback_snapshot_bytes": 0,
+      "system_reserve_bytes": 1073741824
+    },
+    "startup_physical_budget_bytes": 10012493728,
+    "steady_physical_budget_bytes": 10012493728,
+    "additional_commit_budget_bytes": 4481875968,
+    "peaks_calibrated": false,
+    "performance_preflight_eligible": false,
+    "performance_rejection_reasons": [
+      "available_physical_below_conservative_resident_budget"
+    ],
+    "inference_policy": "performance screening is stricter than ordinary inference; no automatic setting changes"
+  },
+  "validation": {
+    "native_core_checks": 31,
+    "resource_tests": 9,
+    "aggregation_tests": 2,
+    "integration_tests": 8,
+    "cpu_logits_regression": {
+      "atol": 0.001,
+      "rtol": 0.0001,
+      "max_kl": 1e-06,
+      "candidate_repacking": false,
+      "results": [
+        {
+          "prompt_index": 0,
+          "max_abs_logit_delta": 0.0,
+          "logits_close": true,
+          "softmax_kl": 0.0,
+          "tokens_equal": true,
+          "output_equal": true,
+          "vocabulary_size": 248320
+        },
+        {
+          "prompt_index": 1,
+          "max_abs_logit_delta": 0.0,
+          "logits_close": true,
+          "softmax_kl": 0.0,
+          "tokens_equal": true,
+          "output_equal": true,
+          "vocabulary_size": 248320
+        }
+      ],
+      "scope": "Two bounded diagnostics, final-prefill full-vocabulary logits and 32 output tokens per request; not a quality/performance acceptance",
+      "settings": {
+        "seed": 42,
+        "max_tokens": 32,
+        "context": 4096,
+        "threads": 4,
+        "threads_batch": 4,
+        "batch": 128,
+        "persistent_threadpool": false,
+        "prefill_last_only": false,
+        "cpu_weight_repacking": false,
+        "thinking": true,
+        "sampling": "unchanged local baseline temperature/top-k/top-p/penalties"
+      }
+    }
+  },
+  "benchmark_attempt": {
+    "status": "resource_rejected",
+    "warmup_count": 0,
+    "run_count": 0,
+    "model_sha256_was_skipped": true,
+    "reasons": [
+      "available_physical_below_conservative_resident_budget"
+    ]
+  },
+  "workload_inspection": {
+    "scope": "vocabulary/template inspection only; no generation, task quality or performance acceptance",
+    "workloads_sha256": "5967b7955be80c6e793fef79f179d48889149f71847523123989d346c71501b3",
+    "cases": [
+      {
+        "name": "chat-explanation",
+        "category": "chat",
+        "source": "authored representative task; not a user conversation",
+        "input_tokens": 35,
+        "context": 4096,
+        "max_output_tokens": 768,
+        "fits_full_output_budget": true,
+        "prompt_sha256": "cdbbd8127a584f1ffd6d0f979638c618db45891f04acc4fc23766a1328cbda38",
+        "quality_rubric": [
+          "解释短波散射更强",
+          "说明傍晚光程更长",
+          "中文清楚且不虚构事实"
+        ],
+        "quality_status": "not_evaluated"
+      },
+      {
+        "name": "chat-planning",
+        "category": "chat-long-output",
+        "source": "authored representative task; not a user conversation",
+        "input_tokens": 52,
+        "context": 4096,
+        "max_output_tokens": 1536,
+        "fits_full_output_budget": true,
+        "prompt_sha256": "3f7c262a724db904fe5f4171453cb50c181f449cc96cf38d236ace7192a68a9f",
+        "quality_rubric": [
+          "覆盖14天且每日任务可执行",
+          "不依赖付费课程或第三方库",
+          "包含练习和整合项目"
+        ],
+        "quality_status": "not_evaluated"
+      },
+      {
+        "name": "code-understanding",
+        "category": "code-understanding",
+        "source": "authored representative task; not user source code",
+        "input_tokens": 102,
+        "context": 4096,
+        "max_output_tokens": 1024,
+        "fits_full_output_budget": true,
+        "prompt_sha256": "5c6ade52bdb58e2620d545b61be8d0b763ff427f0c7d376ce56008210331279b",
+        "quality_rubric": [
+          "原函数返回None",
+          "指出range漏掉最后一个元素",
+          "修复正确处理空列表和首个正数"
+        ],
+        "quality_status": "not_evaluated"
+      },
+      {
+        "name": "code-generation",
+        "category": "code-generation",
+        "source": "authored representative task; not user source code",
+        "input_tokens": 71,
+        "context": 4096,
+        "max_output_tokens": 1024,
+        "fits_full_output_budget": true,
+        "prompt_sha256": "8630728537a746bd2f95b9de83c5cd370d33644c368d868998abae40636856a8",
+        "quality_rubric": [
+          "保持首次出现顺序",
+          "支持一次性生成器",
+          "不修改输入、不排序、无外部依赖",
+          "复杂度说明与实现一致"
+        ],
+        "quality_status": "not_evaluated"
+      },
+      {
+        "name": "long-document",
+        "category": "long-input",
+        "source": "authored synthetic engineering document; not real-document quality acceptance",
+        "input_tokens": 3039,
+        "context": 4096,
+        "max_output_tokens": 768,
+        "fits_full_output_budget": true,
+        "prompt_sha256": "3fde4c8cf2873cf225383b55c7f31c69d7da4ffbfcd389cc386e88391cf4c98f",
+        "quality_rubric": [
+          "自然结束",
+          "正文仅为7319",
+          "这是有限事实提取，不代表完整长文理解"
+        ],
+        "quality_status": "not_evaluated"
+      },
+      {
+        "name": "long-prefill-fixed",
+        "category": "long-input-fixed-output",
+        "source": "authored synthetic compute workload; not task-quality acceptance",
+        "input_tokens": 3280,
+        "context": 4096,
+        "max_output_tokens": 32,
+        "fits_full_output_budget": true,
+        "prompt_sha256": "5a7b033804e876c91331b252361a628e0ccc23c66ed2bf1bd47b346c35c24559",
+        "quality_rubric": [
+          "只检查固定32个输出token完成情况，不把截断文本当完整回答"
+        ],
+        "quality_status": "not_evaluated"
+      }
+    ]
+  },
+  "not_verified": [
+    "GPU model execution and state operations",
+    "calibrated workspace/startup/steady peaks",
+    "physical disk throughput/IOPS and effective memory bandwidth",
+    "new three-category generation quality and repeated performance baseline",
+    "prefix reuse, MTP, SSD streaming, automatic strategy selection"
+  ],
+  "resource_config": {
+    "context": 4096,
+    "threads": 4,
+    "threads_batch": 4,
+    "batch": 128,
+    "temperature": 1.0,
+    "top_p": 0.95,
+    "top_k": 20,
+    "seed": 4294967295,
+    "thinking": true,
+    "cache_k": "f16",
+    "cache_v": "f16",
+    "recurrent_state": "f32",
+    "cpu_weight_repacking": false
+  }
+}

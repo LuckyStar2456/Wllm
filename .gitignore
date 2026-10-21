@@ -9,5 +9,7 @@ __pycache__/
 !/reports/e2-summary.json
 !/reports/e2-followup.md
 !/reports/e2-followup.json
+!/reports/resource-validation.md
+!/reports/resource-validation.json
 /configs/local.json
 *.user

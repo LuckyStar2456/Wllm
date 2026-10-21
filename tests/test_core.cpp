@@ -9,6 +9,7 @@ int main() {
     try {
         auto c=Config::parse(json::object());
         require(c.context==4096,"4K default");
+        require(c.dump()["recurrent_state"]=="f32","recurrent precision is explicit and separate from KV");
         require(!c.cpu_weight_repacking,"weight repack stays opt-in");
         require(Config::parse({{"cpu_weight_repacking",true}}).dump()["cpu_weight_repacking"]==true,"repack recorded");
         require(throws([]{Config::parse({{"cpu_weight_repacking","on"}});}),"reject string repack config");
@@ -40,6 +41,8 @@ int main() {
         require(m.snapshot(9)["elapsed_s"]==4.0,"stopped clock");
         require(m.snapshot(9)["output_tokens"]==4,"partial output retained");
         require(m.snapshot(9)["working_set_bytes"].is_null(),"unknown memory not zero");
+        require(m.snapshot(9)["system_commit_total_bytes"].is_null(),"unknown system commit not zero");
+        require(m.snapshot(9)["process_io_read_bytes"].is_null(),"unknown process IO not zero");
         Metrics next;
         require(next.snapshot(0)["output_tokens"]==0,"request reset");
         std::cout << checks << " checks passed\n";

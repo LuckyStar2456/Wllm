@@ -6,6 +6,21 @@
 
 在 Wllm 根目录使用 PowerShell。需要 Visual Studio 2022 的 C++ x64 工具与 CMake，以及 Git。运行时是原生 C++ 程序，不依赖 Ollama 服务。
 
+资源探测和三类负载准备（2026-10-21，先构建当前版本）：
+
+```powershell
+# 只探测，不执行模型。输出路径须为新路径。
+python scripts/resource_ledger.py --output reports/resources-local.json
+# 检查聊天/代码/长文的模板与实际 token 长度，只加载词表，不生成。
+python scripts/inspect_workloads.py --output reports/workloads-local
+# 资源准入通过后才开始预热和串行采样；不通过会保存原因并停止。
+python scripts/benchmark.py --profiles benchmarks/baseline-profiles.json --workloads benchmarks/representative-workloads.json --repeats 3
+```
+
+也可用 `build/bin/Release/wllm.exe --config configs/local.json --resources reports/resources-native.json` 只取原生内存/CPU/DXGI 与模型预算。不传配置可作无模型系统探测。共享显存额度不能与 RAM 相加；磁盘映射不等于驻留，3GiB 工作区是尚未校准的保守预留。性能准入较普通推理严格，拒绝不等于模型无法运行。详见[资源准备报告](../reports/resource-validation.md)。
+
+`scripts/build.ps1 -BuildDirectory build/candidate` 可在独立目录验证候选，不覆盖默认可执行文件；Python 探测/负载检查工具支持 `--exe build/candidate/bin/Release/wllm.exe`。基准的 profile 文件也可显式指定 `exe` 路径。
+
 ```powershell
 ./scripts/build.ps1
 ```
@@ -18,7 +33,9 @@
 py -3.11 scripts/prepare_model.py
 ```
 
-适配工具使用 Python 3.11、NumPy 及锁定源码内的 gguf 模块。当前环境已有 NumPy；其他环境请先在独立 Python 环境安装 gguf 模块所需依赖。工具仅接受已记录的源文件 SHA256，原文件只读。它调整 KV 头数与位置编码字段格式、重命名 SSM 偏置，排除首期不用的视觉等非文本张量；不做重量化或修改文本张量数据。每个保留张量按类型、形状、SHA256 校验，报告位于 `reports/model-adaptation.json`。派生 GGUF 占用额外磁盘，输出到 `models/`，不能把文件变小当成推理加速或参数档位变化。
+适配工具使用 Python 3.11、NumPy 及锁定源码内的 gguf 模块。当前环境已有 NumPy；其他环境请先在独立 Python 环境安装 gguf 模块所需依赖。工具仅接受已记录的源文件 SHA256，原文件只读。它调整 KV 头数与位置编码字段格式、重命名 SSM 偏置，排除 `v.`、`mm.` 视觉相关张量及首期未使用的 `mtp.` 辅助预测张量；不做重量化或修改保留的主文本张量数据。每个保留张量按类型、形状、SHA256 校验，报告位于 `reports/model-adaptation.json`。派生 GGUF 占用额外磁盘，输出到 `models/`，不能把文件变小当成推理加速或参数档位变化。
+
+2026-10-17 核实：MTP 属于辅助文本预测能力，并非视觉模块。现有报告字段 `skipped_nontext_tensors` 同时列入这些类别，是旧命名，不能据此认定 MTP 为非文本；脚本和报告格式本轮未改。427 个保留张量的字节校验不代表保留全部辅助能力，当前派生文件不含 MTP，也尚无启用 MTP 的运行入口。恢复该能力属于后续独立适配实验，见[架构设计 6.1](architecture.md#61-当前文件的-mtp-前置条件2026-10-17)。
 
 首次成功准备后生成 `configs/local.json`；已有配置不会被覆盖。也可使用符合上游格式的 Qwen3.5 Q4_K_M 文件显式配置路径，但当前验收仅针对本机模型。
 
@@ -69,5 +86,7 @@ py -3.11 scripts/prepare_model.py
 ## 当前范围
 
 默认每次进程处理一个文本请求；`-Interactive` 可在同一进程处理多个独立请求。当前不含 GUI、HTTP 服务、带历史的多轮对话、视觉或推测解码。模型加载使用内存映射，默认关闭额外 CPU 权重重排缓冲；该研究开关未通过本机数值门槛。空闲 RAM 较少时仍可能发生换页。资源检查是保守估计，不是运行内存的精确预报。错误时不会结束其他应用或修改 Ollama 配置。
+
+当前注意力 KV 为 F16，循环状态为 F32。现有资源检查采用权重文件大小、注意力 KV 估算及固定工作区预留，尚不能精确预测其他后端的编译峰值、权重副本或推测状态开销。核显共享显存属于系统 RAM；可用内存和提交额度需在实际运行时重新检查。后续资源账本与实验准入设计不代表当前已实现自动资源调度。
 
 本机验证结果和限制见 `reports/prototype-validation.md`；没有跨引擎加速结论。

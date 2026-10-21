@@ -4,6 +4,7 @@
 #include <io.h>
 #include <intrin.h>
 #include "core.h"
+#include "resources.h"
 #include "profile.h"
 #include "terminal.h"
 #include "llama.h"
@@ -83,6 +84,18 @@ struct State {
             metrics.private_bytes = p.PrivateUsage;
             metrics.available = m.ullAvailPhys;
             metrics.peak_working_set = std::max(metrics.peak_working_set, metrics.working_set);
+            metrics.page_faults = p.PageFaultCount;
+        }
+        PERFORMANCE_INFORMATION commit{}; commit.cb = sizeof(commit);
+        if (GetPerformanceInfo(&commit, sizeof(commit))) {
+            metrics.system_commit_available = true;
+            metrics.commit_total = uint64_t(commit.CommitTotal) * commit.PageSize;
+            metrics.commit_limit = uint64_t(commit.CommitLimit) * commit.PageSize;
+        }
+        IO_COUNTERS io{};
+        if (GetProcessIoCounters(GetCurrentProcess(), &io)) {
+            metrics.io_available = true;
+            metrics.io_read_bytes = io.ReadTransferCount; metrics.io_write_bytes = io.WriteTransferCount;
         }
     }
 };
@@ -141,7 +154,7 @@ static uint64_t meta_u32(const gguf_context * meta, const std::string & name) {
     return gguf_get_val_u32(meta, key);
 }
 
-static void preflight(State & s) {
+static void preflight(State & s, bool enforce = true) {
     const auto & c = s.config;
     if (c.model.empty() || !fs::is_regular_file(fs::u8path(c.model))) throw std::runtime_error("GGUF file not found; set model in config or use --model");
     gguf_init_params p{}; p.no_alloc = true;
@@ -156,6 +169,10 @@ static void preflight(State & s) {
     const uint64_t train = meta_u32(meta.get(), "qwen35.context_length");
     if (uint64_t(c.context) > train) throw std::runtime_error("Requested context exceeds model training context");
     const auto heads_key = gguf_find_key(meta.get(), "qwen35.attention.head_count_kv");
+    const auto interval = meta_u32(meta.get(), "qwen35.full_attention_interval");
+    const auto layers = meta_u32(meta.get(), "qwen35.block_count");
+    if (!interval || layers % interval || gguf_find_key(meta.get(), "qwen35.attention.recurrent_layers") >= 0)
+        throw std::runtime_error("Resource estimate requires the validated qwen35 periodic layer layout");
     uint64_t heads = 0;
     if (heads_key < 0) throw std::runtime_error("Missing KV head metadata");
     if (gguf_get_kv_type(meta.get(), heads_key) == GGUF_TYPE_ARRAY && gguf_get_arr_type(meta.get(), heads_key) == GGUF_TYPE_UINT32) {
@@ -163,18 +180,28 @@ static void preflight(State & s) {
         for (size_t i=0; i<gguf_get_arr_n(meta.get(),heads_key); ++i) heads += a[i];
     } else {
         heads = meta_u32(meta.get(), "qwen35.attention.head_count_kv") *
-            (meta_u32(meta.get(), "qwen35.block_count") / meta_u32(meta.get(), "qwen35.full_attention_interval"));
+            (layers / interval);
     }
     const uint64_t kv = uint64_t(c.context) * heads * 2 * (meta_u32(meta.get(),"qwen35.attention.key_length") + meta_u32(meta.get(),"qwen35.attention.value_length"));
     const uint64_t weights = fs::file_size(fs::u8path(c.model));
+    // Match pinned qwen35 single-sequence hybrid memory (F32 conv + F32 recurrent).
+    // Explicit recurrent-layer overrides require a separate estimate rather than guessing.
+    const uint64_t recurrent_layers = layers - layers / interval;
+    const uint64_t conv = meta_u32(meta.get(), "qwen35.ssm.conv_kernel");
+    const uint64_t inner = meta_u32(meta.get(), "qwen35.ssm.inner_size");
+    const uint64_t state = meta_u32(meta.get(), "qwen35.ssm.state_size");
+    const uint64_t groups = meta_u32(meta.get(), "qwen35.ssm.group_count");
+    if (!conv) throw std::runtime_error("Invalid recurrent convolution size");
+    const uint64_t recurrent = recurrent_layers * 4 * ((conv - 1) * (inner + 2 * groups * state) + state * inner);
     // A conservative admission estimate, not a measured runtime allocation.
-    const uint64_t estimated = weights + kv + (3072ULL << 20);
+    const uint64_t workspace = 3072ULL << 20;
+    const uint64_t estimated = weights + kv + recurrent + workspace;
     MEMORYSTATUSEX m{}; m.dwLength=sizeof(m);
     if (!GlobalMemoryStatusEx(&m)) throw std::runtime_error("Cannot read system memory budget");
     {
         std::lock_guard<std::mutex> lock(s.mutex);
         s.identity = {{"architecture","qwen35"},{"quantization","Q4_K_M"},{"weight_bytes",weights},
-            {"kv_estimate_bytes",kv},{"working_budget_estimate_bytes",estimated},{"physical_total_bytes",m.ullTotalPhys},
+            {"kv_estimate_bytes",kv},{"recurrent_estimate_bytes",recurrent},{"working_budget_estimate_bytes",estimated},{"physical_total_bytes",m.ullTotalPhys},
             {"physical_available_at_admission",m.ullAvailPhys},{"model_context",train},
             {"llama_commit",WLLM_LLAMA_COMMIT},{"pid",GetCurrentProcessId()}};
         s.identity["cpu_build"] = WLLM_CPU_TARGET;
@@ -183,9 +210,32 @@ static void preflight(State & s) {
             s.identity["original_weight_sha256"] = gguf_get_val_str(meta.get(), source_key);
     }
     const uint64_t reserve = uint64_t(c.reserve_mib * 1048576);
-    if (estimated + reserve > m.ullTotalPhys || kv + (512ULL << 20) + reserve > m.ullAvailPageFile || m.ullAvailPhys < reserve) {
+    const auto resources = system_resources();
+    const uint64_t headroom = resources.at("commit_headroom_bytes").get<uint64_t>();
+    const uint64_t additional_copy = c.cpu_weight_repacking ? weights : 0;
+    const uint64_t physical_required = estimated + additional_copy + reserve;
+    const uint64_t commit_required = kv + recurrent + workspace + additional_copy + reserve;
+    std::vector<std::string> reasons;
+    if (physical_required > resources.at("physical_available_bytes").get<uint64_t>()) reasons.push_back("available_physical_below_conservative_resident_budget");
+    if (commit_required > headroom) reasons.push_back("system_commit_headroom_below_estimate");
+    if (c.cpu_weight_repacking) reasons.push_back("experimental_repacking_not_numerically_accepted");
+    s.identity["resource_ledger"] = {
+        {"estimate_scope", "pinned CPU qwen35, one sequence, no prefix/draft/rollback cache"},
+        {"source", "GGUF metadata + pinned llama-hparams.cpp/llama-model.cpp; workspace is a conservative allowance"},
+        {"system_at_admission", resources},
+        {"components", {{"mapped_file_bytes", weights}, {"mapped_file_resident_bytes", nullptr},
+            {"attention_kv_f16_estimate_bytes", kv}, {"recurrent_f32_estimate_bytes", recurrent},
+            {"workspace_allowance_bytes", workspace}, {"workspace_measured_bytes", nullptr},
+            {"extra_weight_copy_estimate_bytes", additional_copy}, {"prefix_cache_bytes", 0},
+            {"draft_bytes", 0}, {"rollback_snapshot_bytes", 0}, {"system_reserve_bytes", reserve}}},
+        {"startup_physical_budget_bytes", physical_required}, {"steady_physical_budget_bytes", physical_required},
+        {"additional_commit_budget_bytes", commit_required}, {"peaks_calibrated", false},
+        {"performance_preflight_eligible", reasons.empty()}, {"performance_rejection_reasons", reasons},
+        {"inference_policy", "performance screening is stricter than ordinary inference; no automatic setting changes"}};
+    if (!enforce) return;
+    if (estimated + reserve > m.ullTotalPhys || kv + recurrent + (512ULL << 20) + reserve > m.ullAvailPageFile || m.ullAvailPhys < reserve) {
         std::ostringstream error;
-        error << "Insufficient memory budget: estimated weights+KV+workspace=" << estimated / 1048576
+        error << "Insufficient memory budget: estimated weights+KV+recurrent+workspace=" << estimated / 1048576
               << " MiB, reserve=" << reserve / 1048576 << " MiB, physical total=" << m.ullTotalPhys / 1048576
               << " MiB, available=" << m.ullAvailPhys / 1048576 << " MiB; requested context=" << c.context
               << ". No automatic context/precision reduction; close applications or explicitly choose --context.";
@@ -381,6 +431,7 @@ static void usage() {
         "  --record PATH --cancel-file PATH --inspect PATH --quiet-metrics\n"
         "  --logits-file PATH (diagnostic: final prefill logits, float32 little-endian)\n"
         "  --profile (phase timings) --profile-ops (intrusive operator diagnostic)\n"
+        "  --resources PATH (write resource/CPU budget report; no inference or prompt read)\n"
         "Metrics: stderr + JSONL; generated text: stdout. Ctrl+C cancels.\n";
 }
 
@@ -474,7 +525,7 @@ static int main_utf8(int argc,char ** argv) {
             if(++i==argc) throw std::runtime_error("--config needs a path");
             settings=json::parse(read_text(argv[i]));
         }
-        std::string prompt,system,inspect,cancel_file,logits_file;
+        std::string prompt,system,inspect,cancel_file,logits_file,resources_file;
         bool prompt_set=false, quiet=false, interactive=false, profile=false, profile_ops=false;
         const std::map<std::string,std::string> ints={{"--context","context"},{"--threads","threads"},{"--threads-batch","threads_batch"},{"--batch","batch"},{"--max-tokens","max_tokens"},{"--seed","seed"}};
         const std::map<std::string,std::string> bools={{"--thinking","thinking"},{"--persistent-threadpool","persistent_threadpool"},{"--prefill-last-only","prefill_last_only"},{"--cpu-weight-repacking","cpu_weight_repacking"}};
@@ -495,12 +546,34 @@ static int main_utf8(int argc,char ** argv) {
             else if(arg=="--inspect") inspect=v;
             else if(arg=="--logits-file") logits_file=v;
             else if(arg=="--cancel-file") cancel_file=v;
+            else if(arg=="--resources") resources_file=v;
             else if(bools.count(arg)) { if(v!="on" && v!="off") throw std::runtime_error(arg + " must be on or off"); settings[bools.at(arg)]=v=="on"; }
             else if(ints.count(arg)) { const json n=json::parse(v); if(!n.is_number_integer()) throw std::runtime_error("Expected integer for " + arg); settings[ints.at(arg)]=n; }
             else if(arg=="--temperature" || arg=="--timeout") { const json n=json::parse(v); if(!n.is_number()) throw std::runtime_error("Expected number"); settings[arg=="--timeout"?"timeout_s":"temperature"]=n; }
             else throw std::runtime_error("Unknown argument: " + arg);
         }
         const auto config=Config::parse(settings);
+        if (!resources_file.empty()) {
+            if (prompt_set || interactive || !inspect.empty() || !logits_file.empty() || profile || profile_ops || !cancel_file.empty() || !system.empty())
+                throw std::runtime_error("--resources is a standalone probe; do not combine with request/diagnostic options");
+            State state; state.config = config;
+            json report = {{"schema_version",1}, {"evidence", "resource probe only; no model execution"},
+                {"unix_time_ms", std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::system_clock::now().time_since_epoch()).count()},
+                {"llama_commit",WLLM_LLAMA_COMMIT}, {"cpu_build",WLLM_CPU_TARGET},
+                {"system",system_resources()}, {"cpu",cpu_capabilities()}, {"dxgi",dxgi_adapters()}, {"config",config.dump()},
+                {"backends", {{"CPU", "compiled; model execution checked separately"},
+                    {"Vulkan", "not compiled into this executable"}, {"SYCL", "not compiled into this executable"},
+                    {"OpenVINO", "not verified in this executable"}}}};
+            if (!config.model.empty()) { preflight(state, false); report["model"] = state.identity; }
+            else report["model"] = nullptr;
+            const auto path = fs::u8path(resources_file);
+            if (path.has_parent_path()) fs::create_directories(path.parent_path());
+            if (fs::exists(path)) throw std::runtime_error("Resource report exists; choose a new path");
+            std::ofstream out(path, std::ios::binary); out << report.dump(2) << '\n'; out.flush();
+            if (!out) throw std::runtime_error("Cannot write resource report");
+            std::cout << "Resource report: " << resources_file << '\n';
+            return 0;
+        }
         if (interactive && (!inspect.empty() || !logits_file.empty()))
             throw std::runtime_error("Interactive mode cannot overwrite inspect/logits diagnostic files");
         BackendRuntime backend;

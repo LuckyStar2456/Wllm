@@ -23,9 +23,23 @@ def save_json(path: Path, value: Any) -> None:
     path.write_text(json.dumps(value, ensure_ascii=False, indent=2), encoding="utf-8")
 
 
+def render_prompt(case: dict[str, Any]) -> str:
+    return case.get("prefix", "") + case.get("repeat_text", "") * case.get("repeat", 0) + case["prompt"]
+
+
 def digest(path: Path) -> str:
     with path.open("rb") as stream:
         return hashlib.file_digest(stream, "sha256").hexdigest()
+
+
+def resource_preflight(exe: Path, config: Path, destination: Path) -> dict[str, Any]:
+    """Fresh observation before each model process; never infer readiness from an older snapshot."""
+    result = subprocess.run([str(exe), "--config", str(config), "--resources", str(destination)],
+                            cwd=ROOT, capture_output=True, text=True, encoding="utf-8", timeout=45)
+    if result.returncode != 0:
+        raise RuntimeError(f"Resource probe failed; build the current CPU executable first: {result.stderr.strip()}")
+    report = read_json(destination)
+    return report["model"]["resource_ledger"]
 
 
 def summarize(runs: list[dict[str, Any]]) -> dict[str, Any]:
@@ -52,7 +66,7 @@ def summarize(runs: list[dict[str, Any]]) -> dict[str, Any]:
 
 def run_once(exe: Path, config: Path, case: dict[str, Any], folder: Path, timeout: float) -> dict[str, Any]:
     folder.mkdir()
-    prompt = case.get("prefix", "") + case.get("repeat_text", "") * case.get("repeat", 0) + case["prompt"]
+    prompt = render_prompt(case)
     prompt_path = folder / "prompt.txt"
     prompt_path.write_text(prompt, encoding="utf-8")
     record = folder / "run.jsonl"
@@ -96,7 +110,9 @@ def run_once(exe: Path, config: Path, case: dict[str, Any], folder: Path, timeou
     return {"ok": ok, "diagnostic": diagnostic, "exit_code": code, "wall_s": time.perf_counter() - started,
             "metrics": metrics, "effective_config": start.get("config"), "identity": end.get("identity"),
             "token_ids": end.get("token_ids", []), "answer_ok": answer_ok,
-            "prompt_sha256": digest(prompt_path), "record": str(record)}
+            "prompt_sha256": digest(prompt_path), "record": str(record),
+            "quality_status": "automated_exact_answer" if "expected_answer" in case else "manual_review_required",
+            "category": case.get("category", "synthetic"), "source": case.get("source", "repository workload")}
 
 
 def main() -> None:
@@ -140,19 +156,39 @@ def main() -> None:
         exe = (ROOT / profile.get("exe", "build/bin/Release/wllm.exe")).resolve()
         prepared.append((profile["name"], exe, path))
     summary: dict[str, Any] = {
-        "schema_version": 1, "model_sha256": digest(model), "base_config": base,
+        "schema_version": 2, "model_sha256": None, "base_config": base,
         "profiles": profiles, "workloads": workloads, "repeats": args.repeats,
         "executable_sha256": {name: digest(exe) for name, exe, _ in prepared},
         "order": "forward/reverse alternation by repeat, sequential processes",
         "cache": "OS file cache uncontrolled; fresh process per request, no prefix reuse",
+        "ok_scope": "execution/stop condition plus configured exact-answer check; manual task quality remains separate",
         "acceptance_policy": {"latency_regression_fraction": 0.05, "throughput_regression_fraction": 0.05,
                               "minimum_improvement_fraction": 0.05,
                               "note": "Screening only. Token equality and task quality checked separately; no automatic promotion."},
-        "warmups": [], "runs": [],
+        "resource_preflights": [], "warmups": [], "runs": [],
     }
+    save_json(output / "summary.json", summary)
+
+    def admitted(name: str, exe: Path, config: Path, label: str) -> bool:
+        path = output / f"resources-{label}-{name}.json"
+        ledger = resource_preflight(exe, config, path)
+        summary["resource_preflights"].append({"profile": name, "label": label, "report": str(path),
+            "eligible": ledger["performance_preflight_eligible"], "reasons": ledger["performance_rejection_reasons"]})
+        if not ledger["performance_preflight_eligible"]:
+            summary["status"] = "resource_rejected"
+            summary["aggregates"] = summarize(summary["runs"])
+        save_json(output / "summary.json", summary)
+        return bool(ledger["performance_preflight_eligible"])
+
+    for name, exe, config in prepared:
+        if not admitted(name, exe, config, "initial"):
+            raise SystemExit(f"Performance run deferred: insufficient/unsupported resources for {name}; see {output}")
+    summary["model_sha256"] = digest(model)
     save_json(output / "summary.json", summary)
     if not args.no_warmup:
         for name, exe, config in prepared:
+            if not admitted(name, exe, config, "warmup"):
+                raise SystemExit(f"Warmup deferred by resource preflight; see {output}")
             warmup = {"prompt": "Hello", "max_tokens": 2}
             result = run_once(exe, config, warmup, output / f"warmup-{name}", args.timeout)
             summary["warmups"].append({"profile": name, **result})
@@ -164,6 +200,8 @@ def main() -> None:
         for case in workloads:
             paired = []
             for name, exe, config in order:
+                if not admitted(name, exe, config, f"r{repeat + 1}-{case['name']}"):
+                    raise SystemExit(f"Performance run stopped by fresh resource preflight; see {output}")
                 folder = output / f"r{repeat + 1}-{case['name']}-{name}"
                 result = run_once(exe, config, case, folder, args.timeout)
                 result.update(profile=name, case=case["name"], repeat=repeat + 1)
@@ -181,6 +219,8 @@ def main() -> None:
                     result["token_ids"] == reference["token_ids"] if result["ok"] and reference["ok"] else None
                 )
             save_json(output / "summary.json", summary)
+    summary["status"] = "completed" if all(run["ok"] for run in summary["runs"]) else "failed"
+    save_json(output / "summary.json", summary)
     print(f"Report: {output / 'summary.json'}", flush=True)
     if any(not run["ok"] for run in summary["runs"]):
         raise SystemExit(1)
