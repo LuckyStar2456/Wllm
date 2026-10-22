@@ -107,7 +107,7 @@ py -3.11 scripts/prepare_model.py
 
 ## 当前范围
 
-结构化 System One 请求优先使用：
+Reflex（反射决策）是 Wllm 内共用推理引擎的任务模式，结构化 System One 请求优先使用：
 
 ```powershell
 ./scripts/run.ps1 -Mode system_one -RequestFile configs/system-one.example.json

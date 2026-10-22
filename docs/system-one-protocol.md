@@ -1,5 +1,7 @@
 # System One 文本请求协议
 
+本协议是 Wllm **Reflex（反射决策）** 模式的结构化入口。Reflex 与普通生成共用 Wllm 推理引擎和仓库，当前参数沿用 `--mode system_one`，底层候选文件入口沿用 `--mode candidate_score`。
+
 更新：2026-10-22。按 JEV / TypeSafe 的 `state + questions` 请求和具名 `answers` 响应适配本地 CPU 候选打分。只接受 `questions`，不接受 `ask`。这是 JSON 请求/响应适配，当前没有 HTTP 服务，也不会调用远程 JEV。实现和本机有界测试见[本轮报告](../reports/system-one-validation.md)。
 
 ## 运行
