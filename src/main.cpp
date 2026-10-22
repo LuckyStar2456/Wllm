@@ -5,6 +5,7 @@
 #include <intrin.h>
 #include "core.h"
 #include "candidate_score.h"
+#include "system_one.h"
 #include "resources.h"
 #include "profile.h"
 #include "terminal.h"
@@ -347,6 +348,37 @@ static std::vector<int32_t> candidate_tokens(const CandidateTask & task, const l
     return result;
 }
 
+static void assign_system_one_labels(CandidateTask & task, const llama_vocab * vocab) {
+    const std::string boundary="<|im_start|>assistant\n<think>\n\n</think>\n\n";
+    const auto prefix=tokenize(vocab,boundary);
+    std::vector<std::string> pool;
+    const std::string simple="ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
+    for (char c:simple) pool.emplace_back(1,c);
+    // Large choice sets use other short ordinary ASCII tokens. Every mapping is
+    // checked again at the complete rendered answer prefix before any inference.
+    std::set<std::string> considered;
+    size_t next=0;
+    auto add=[&](const std::string & label) {
+        if (next>=task.candidates.size() || !considered.insert(label).second) return;
+        CandidateTask probe; probe.candidates.push_back({"probe",label,"probe"});
+        try {
+            candidate_tokens(probe,vocab,boundary,prefix);
+            task.candidates[next++].label=label;
+        } catch (const std::runtime_error &) {} // This token spelling is not a valid label at this boundary.
+    };
+    for (const auto & label:pool) add(label);
+    for (llama_token token=0;next<task.candidates.size() && token<llama_vocab_n_tokens(vocab);++token) {
+        char piece[32];
+        const int n=llama_token_to_piece(vocab,token,piece,sizeof(piece),0,false);
+        if (n<1 || n>16) continue;
+        const std::string label(piece,size_t(n));
+        if (std::all_of(label.begin(),label.end(),[](unsigned char ch) {
+            return (ch>='A' && ch<='Z') || (ch>='a' && ch<='z') || (ch>='0' && ch<='9');
+        })) add(label);
+    }
+    if (next!=task.candidates.size()) throw std::runtime_error("Not enough validated single-token labels for this model");
+}
+
 static std::string run(State & s, const std::string & prompt, const std::string & system, const std::string & inspect_path,
         const std::string & logits_path, ModelPtr * resident, const CandidateTask * task) {
     ModelPtr transient(nullptr, llama_model_free);
@@ -379,6 +411,10 @@ static std::string run(State & s, const std::string & prompt, const std::string 
         throw std::runtime_error("Model load failed; see reports/backend.log");
     }
     const llama_vocab * vocab=llama_model_get_vocab(model.get());
+    CandidateTask mapped_task;
+    if (task && task->automatic_labels) {
+        mapped_task=*task; assign_system_one_labels(mapped_task,vocab); task=&mapped_task;
+    }
     const char * template_src=llama_model_chat_template(model.get(),nullptr);
     if (!template_src || !*template_src) throw std::runtime_error("GGUF has no chat template; refusing to guess one");
     auto templates=common_chat_templates_init(model.get(),"");
@@ -545,6 +581,7 @@ static void usage() {
         "  --record PATH --cancel-file PATH --inspect PATH --quiet-metrics\n"
         "  --logits-file PATH (diagnostic: final prefill logits, float32 little-endian)\n"
         "  --mode generate|candidate_score --candidates UTF8_JSON (CPU; returns a JSON decision)\n"
+        "  --mode system_one [--request-file UTF8_JSON] (state + questions; stdin/interactive JSON also supported)\n"
         "  --profile (phase timings) --profile-ops (intrusive operator diagnostic)\n"
         "  --resources PATH (write resource/CPU budget report; no inference or prompt read)\n"
         "  --memory-diagnostic (allocation/OS peaks; excluded from performance benchmarks)\n"
@@ -567,7 +604,8 @@ public:
 
 static int execute_request(const Config & config, const std::string & prompt, const std::string & system,
         const std::string & inspect, const std::string & logits_file, const std::string & cancel_file,
-        bool quiet, bool profile, bool profile_ops, bool memory_diagnostic, ModelPtr * resident, const CandidateTask * task) {
+        bool quiet, bool profile, bool profile_ops, bool memory_diagnostic, ModelPtr * resident, const CandidateTask * task,
+        bool emit_decision=true, json * decision_out=nullptr) {
     State state; state.config=config; state.cancel_file=cancel_file;
     state.memory_diagnostic=memory_diagnostic;
     state.profile.enabled=profile || profile_ops; state.profile.operators=profile_ops;
@@ -643,11 +681,93 @@ static int execute_request(const Config & config, const std::string & prompt, co
         {"prefill_start_s",state.metrics.prefill_start},{"prefill_end_s",state.metrics.prefill_end}}).dump() << '\n';
     record.flush();
     if(!record) { std::cerr << "Metric record write failed\n"; return 1; }
-    if (task && inspect.empty()) {
+    if (decision_out) *decision_out=state.decision;
+    if (task && inspect.empty() && emit_decision) {
         std::cout << state.decision.dump() << '\n' << std::flush;
         if (!std::cout) { std::cerr << "Decision output write failed\n"; return 1; }
     }
     return reason=="error"?1:reason=="cancelled"?130:reason=="timeout"?124:0;
+}
+
+static int execute_system_one(const Config & config, const std::string & body, const std::string & cancel_file,
+        bool quiet, bool profile, bool profile_ops, bool memory_diagnostic, ModelPtr & resident) {
+    const auto started=Clock::now();
+    const auto elapsed=[&] { return std::chrono::duration<double>(Clock::now()-started).count(); };
+    const std::string id="systemone-"+std::to_string(std::chrono::duration_cast<std::chrono::microseconds>(started.time_since_epoch()).count())+
+        "-"+std::to_string(GetCurrentProcessId());
+    json response={{"model",SystemOneRequest::actual_model},{"answers",json::object()},
+        {"usage",{{"input_tokens",0},{"output_tokens",0}}},
+        {"_wllm",{{"request_id",id},{"protocol","typesafe-system-one-text-v1"},
+            {"model_path",config.model},
+            {"execution","sequential isolated questions; retained local weights"},
+            {"probabilities","candidate-normalized local logits; not calibrated correctness"},
+            {"usage_scope","sum of completed prefill batches; aborted partial work is not measurable"}}}};
+    int code=0;
+    std::string active_question;
+    bool validated=false;
+    const auto check_budget=[&] {
+        if (!cancel_file.empty() && fs::exists(fs::u8path(cancel_file))) interrupted=true;
+        if (interrupted.load()) { code=130; throw std::runtime_error("System One request cancelled"); }
+        if (config.timeout_s>0 && elapsed()>=config.timeout_s) { code=124; throw std::runtime_error("System One request timed out"); }
+    };
+    try {
+        const auto request=SystemOneRequest::parse(json::parse(body));
+        validated=true;
+        response["_wllm"]["requested_model"]=request.requested_model;
+        response["_wllm"]["questions"]=json::object();
+        for (auto q:request.questions) {
+            active_question=q.id;
+            check_budget();
+            if (q.task.candidates.size()==1) {
+                // A one-option closed choice is a constant, not a model evaluation.
+                response["answers"][q.id]=system_one_answer(q,json::array({{{"id",q.task.candidates[0].id},{"candidate_normalized_score",1.0}}}));
+                response["_wllm"]["questions"][q.id]={{"constant_choice",true},{"model_evaluated",false}};
+                continue;
+            }
+            auto effective=config;
+            if (config.timeout_s>0) {
+                effective.timeout_s=config.timeout_s-elapsed();
+                if (effective.timeout_s<=0) { code=124; throw std::runtime_error("System One request timed out"); }
+            }
+            q.task.protocol_metadata={{"system_one_request_id",id},{"question_id",q.id},{"type",q.type}};
+            json decision;
+            code=execute_request(effective,request.prompt(),q.system_prompt(),"","",cancel_file,
+                quiet,profile,profile_ops,memory_diagnostic,&resident,&q.task,false,&decision);
+            if (decision.contains("metrics")) response["usage"]["input_tokens"]=
+                response["usage"]["input_tokens"].get<int>()+decision["metrics"]["input_processed"].get<int>();
+            if (code!=0) {
+                auto message=decision.value("error",std::string());
+                if (message.empty()) message=code==124?"Question timed out":code==130?"Question cancelled":"Question evaluation failed";
+                throw std::runtime_error(message);
+            }
+            check_budget();
+            response["answers"][q.id]=system_one_answer(q,decision.at("scores"));
+            response["_wllm"]["questions"][q.id]={{"request_id",decision.at("request_id")},{"metrics",decision.at("metrics")},
+                {"template_version",decision.at("template_version")}};
+        }
+        check_budget();
+    } catch (const std::exception & e) {
+        if (code==0) code=1;
+        response["answers"]=json::object(); // Never present partial completion as a successful batch.
+        response["error"]={{"type",code==130?"cancelled":code==124?"timeout":validated?"evaluation_error":"invalid_request"},
+            {"message",e.what()},{"question_id",active_question.empty()?json(nullptr):json(active_question)}};
+    }
+    response["_wllm"]["elapsed_s"]=elapsed();
+    response["_wllm"]["status"]=code==0?"completed":"failed";
+    try {
+        const auto path=fs::u8path(config.record);
+        if (path.has_parent_path()) fs::create_directories(path.parent_path());
+        std::ofstream record(path,std::ios::app|std::ios::binary);
+        record << json({{"event","system_one_end"},{"request_id",id},{"response",response}}).dump() << '\n';
+        record.flush();
+        if (!record) throw std::runtime_error("Cannot write System One result record");
+    } catch (const std::exception & e) {
+        code=1; response["answers"]=json::object();
+        response["_wllm"]["status"]="failed";
+        response["error"]={{"type","record_error"},{"message",e.what()}};
+    }
+    std::cout << response.dump() << '\n' << std::flush;
+    return std::cout?code:1;
 }
 
 static int main_utf8(int argc,char ** argv) {
@@ -661,7 +781,7 @@ static int main_utf8(int argc,char ** argv) {
             if(++i==argc) throw std::runtime_error("--config needs a path");
             settings=json::parse(read_text(argv[i]));
         }
-        std::string prompt,system,inspect,cancel_file,logits_file,resources_file,candidates_file;
+        std::string prompt,system,inspect,cancel_file,logits_file,resources_file,candidates_file,request_file;
         bool prompt_set=false, quiet=false, interactive=false, profile=false, profile_ops=false, memory_diagnostic=false;
         const std::map<std::string,std::string> ints={{"--context","context"},{"--threads","threads"},{"--threads-batch","threads_batch"},{"--batch","batch"},{"--gpu-layers","gpu_layers"},{"--max-tokens","max_tokens"},{"--seed","seed"}};
         const std::map<std::string,std::string> bools={{"--thinking","thinking"},{"--persistent-threadpool","persistent_threadpool"},{"--prefill-last-only","prefill_last_only"},{"--cpu-weight-repacking","cpu_weight_repacking"}};
@@ -686,12 +806,17 @@ static int main_utf8(int argc,char ** argv) {
             else if(arg=="--resources") resources_file=v;
             else if(arg=="--mode") settings["inference_mode"]=v;
             else if(arg=="--candidates") candidates_file=v;
+            else if(arg=="--request-file") request_file=v;
             else if(bools.count(arg)) { if(v!="on" && v!="off") throw std::runtime_error(arg + " must be on or off"); settings[bools.at(arg)]=v=="on"; }
             else if(ints.count(arg)) { const json n=json::parse(v); if(!n.is_number_integer()) throw std::runtime_error("Expected integer for " + arg); settings[ints.at(arg)]=n; }
             else if(arg=="--temperature" || arg=="--timeout") { const json n=json::parse(v); if(!n.is_number()) throw std::runtime_error("Expected number"); settings[arg=="--timeout"?"timeout_s":"temperature"]=n; }
             else throw std::runtime_error("Unknown argument: " + arg);
         }
         const auto config=Config::parse(settings);
+        const bool system_one=config.inference_mode=="system_one";
+        if (!system_one && !request_file.empty()) throw std::runtime_error("--request-file requires --mode system_one");
+        if (system_one && (prompt_set || !system.empty() || !inspect.empty() || !logits_file.empty() || !candidates_file.empty() || !resources_file.empty()))
+            throw std::runtime_error("system_one accepts state/questions JSON; do not combine with prompt, system, candidates, inspect, logits or resources");
         std::optional<CandidateTask> task;
         if (config.inference_mode=="candidate_score") {
             if (candidates_file.empty()) throw std::runtime_error("candidate_score requires --candidates FILE");
@@ -723,8 +848,26 @@ static int main_utf8(int argc,char ** argv) {
             throw std::runtime_error("Interactive mode cannot overwrite inspect/logits diagnostic files");
         BackendRuntime backend;
         ModelPtr resident(nullptr,llama_model_free);
-        if (!prompt_set) { std::cerr << "Prompt> "; std::getline(std::cin,prompt); }
         int code=0;
+        if (system_one) {
+            auto request=[&](const std::string & body) {
+                const int result=execute_system_one(config,body,cancel_file,quiet,profile,profile_ops,memory_diagnostic,resident);
+                if (result!=0) code=result;
+                return result;
+            };
+            if (!request_file.empty()) request(read_text(request_file));
+            else if (!interactive) request(std::string(std::istreambuf_iterator<char>(std::cin),{}));
+            if (interactive && code!=130 && code!=124) {
+                std::string line;
+                while (!interrupted.load()) {
+                    std::cerr << "SystemOne JSON> ";
+                    if (!std::getline(std::cin,line) || line.empty() || line=="/exit") break;
+                    const int result=request(line);
+                    if (result==130 || result==124) break;
+                }
+            }
+        } else {
+        if (!prompt_set) { std::cerr << "Prompt> "; std::getline(std::cin,prompt); }
         while (true) {
             if (interactive && (prompt.empty() || prompt=="/exit")) break;
             code=execute_request(config,prompt,system,inspect,logits_file,cancel_file,quiet,profile,profile_ops,memory_diagnostic,interactive?&resident:nullptr,task?&*task:nullptr);
@@ -732,6 +875,7 @@ static int main_utf8(int argc,char ** argv) {
             if (!task) std::cout << '\n' << std::flush;
             std::cerr << "[Wllm] Weights retained; each prompt starts a fresh context. /exit or empty line releases the model.\nPrompt> ";
             if (!std::getline(std::cin,prompt)) break;
+        }
         }
         if (resident) {
             const auto release_start=Clock::now();

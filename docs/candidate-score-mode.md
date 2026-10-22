@@ -19,7 +19,9 @@
 
 ## 2. 输入、输出与模式选择
 
-首版入口为 `--mode candidate_score --candidates FILE`，或 PowerShell 的 `-Mode candidate_score -CandidatesFile FILE`；配置字段 `inference_mode` 可为 `generate`（默认）或 `candidate_score`，候选文件仍由请求参数提供。其余设计字段按下表区分已实现与后续能力。
+面向结构化应用新增 `--mode system_one --request-file FILE`，采用 JEV 的 `state + questions` / `answers` 文本格式；仅接受 questions，不接受 ask。它复用本节底层单 token 打分，但自动映射标签，并按 choice/noul/score 返回答案，不要求调用方提供候选标签文件。多题串行、请求状态隔离，confidence 使用官方公式作用于本地分布；详见[协议说明](system-one-protocol.md)和[本机报告](../reports/system-one-validation.md)。旧 candidate_score 协议和 unknown 状态不变。
+
+底层入口为 `--mode candidate_score --candidates FILE`，或 PowerShell 的 `-Mode candidate_score -CandidatesFile FILE`；配置字段 `inference_mode` 可为 `generate`（默认）、`candidate_score` 或 `system_one`，候选文件/结构化请求仍由请求参数提供。其余设计字段按下表区分已实现与后续能力。
 
 | 输入项 | 约定 |
 |---|---|

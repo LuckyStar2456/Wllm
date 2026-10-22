@@ -18,6 +18,8 @@ Wllm 是独立的本地模型推理优化项目，正式名称为 **Wllm**。
 ./scripts/run.ps1 -Prompt '用中文解释什么是推理引擎。'
 ./scripts/run.ps1 -Context 8192 -Prompt '你好'
 ./scripts/run.ps1 -Interactive
+./scripts/run.ps1 -Mode system_one -RequestFile configs/system-one.example.json
+./scripts/run.ps1 -Mode system_one -Interactive
 ./scripts/run.ps1 -Mode candidate_score -CandidatesFile configs/light-switch.candidates.json -Prompt '请把客厅的灯打开'
 ```
 
@@ -47,6 +49,7 @@ Wllm 是独立的本地模型推理优化项目，正式名称为 **Wllm**。
 
 ## 当前范围
 
+- 2026-10-22 新增 [JEV System One 文本协议适配](docs/system-one-protocol.md)：直接提交 `state + questions`，返回具名 `answers`，支持 choice/noul/score，自动映射内部标签。只接受 questions，不接受 ask；实际执行本地 Qwen，不调用远程 JEV。多题串行、独立状态、复用权重；本机验证与限制见[适配报告](reports/system-one-validation.md)。
 - 2026-10-22 按最新优先级实现[候选打分快速决策模式](docs/candidate-score-mode.md)（System 1 分支）的 CPU 显式首版：处理输入后比较单 token 标签 logits，输出 JSON 选择或 unknown 拒答并结束，不生成文本 token；有界证据见[验收报告](reports/candidate-score-validation.md)。自动思考回退/多 token 评分未实现，广泛质量与稳定加速仍待验收，普通生成默认不变。
 - E0/E1 已完成，E2 首批提供模型加载复用、CPU 执行控制和对照工具；后续优化仍按级推进。
 - 已增加 CPU 实际内存诊断与绑定模型/构建/配置的校准准入；独立 Vulkan 构建完成了 Iris Xe 两层放置的小输入运行探测，完整 GPU 数值与性能验收仍待完成。见[本轮报告](reports/memory-backend-validation.md)。
@@ -60,6 +63,7 @@ Wllm 是独立的本地模型推理优化项目，正式名称为 **Wllm**。
 
 - [项目目标与决策](docs/project-goals.md)：用户已确认内容、A/B/C 比较、边界和待决事项。
 - [架构设计](docs/architecture.md)：执行、状态、资源、配置与扩展边界。
+- [System One 文本请求](docs/system-one-protocol.md)：state/questions/answers 格式、题型、使用入口与本地执行边界。
 - [候选打分快速决策模式](docs/candidate-score-mode.md)：CPU 显式首版运行、输入输出与计量；独立质量边界及后续回退设计。
 - [实施与评测路线](docs/implementation-plan.md)：原型验收、计量口径，以及 E2–E5 逐项任务、参考项目/机制、前置条件与验收；含大模型和弱硬件策略。
 - [原型使用说明](docs/quickstart.md)：构建、模型适配、运行、上下文与指标。

@@ -2,8 +2,9 @@ param(
     [string]$Prompt,
     [string]$PromptFile,
     [switch]$Interactive,
-    [ValidateSet('generate','candidate_score')][string]$Mode,
+    [ValidateSet('generate','candidate_score','system_one')][string]$Mode,
     [string]$CandidatesFile,
+    [string]$RequestFile,
     [ValidateRange(512,262144)][int]$Context,
     [int]$MaxTokens,
     [ValidateRange(1,256)][int]$Threads,
@@ -25,6 +26,7 @@ $params = @('--config', $Config)
 if ($Interactive) { $params += '--interactive' }
 if ($PSBoundParameters.ContainsKey('Mode')) { $params += @('--mode', $Mode) }
 if ($CandidatesFile) { $params += @('--candidates', $CandidatesFile) }
+if ($RequestFile) { $params += @('--request-file', $RequestFile) }
 if ($ProfileTimings) { $params += '--profile' }
 if ($ProfileOps) { $params += '--profile-ops' }
 if ($PSBoundParameters.ContainsKey('Context')) { $params += @('--context', $Context) }

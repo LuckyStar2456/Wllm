@@ -12,7 +12,10 @@ struct CandidateTask {
     std::vector<Candidate> candidates;
     std::string unknown_id;
     bool exhaustive = false;
+    bool automatic_labels = false;
+    json protocol_metadata = json::object();
     static constexpr const char * template_version = "wllm-candidate-score-v1";
+    const char * version() const { return automatic_labels?"wllm-system-one-v1":template_version; }
 
     static CandidateTask parse(const json & j) {
         if (!j.is_object()) throw std::runtime_error("Candidate task must be an object");
@@ -58,9 +61,10 @@ struct CandidateTask {
     }
     json manifest() const {
         json labels=json::array();
-        for (const auto & c:candidates) labels.push_back({{"id",c.id},{"label",c.label}});
-        return {{"template_version",template_version},{"labels",labels},{"unknown_id",unknown_id.empty()?json(nullptr):json(unknown_id)},
-            {"exhaustive",exhaustive},{"fallback","disabled"},{"score_policy","raw_logits; no sampling transforms"}};
+        for (const auto & c:candidates) labels.push_back({{"id",c.id},{"label",c.label.empty()?json(nullptr):json(c.label)}});
+        return {{"template_version",version()},{"labels",labels},{"unknown_id",unknown_id.empty()?json(nullptr):json(unknown_id)},
+            {"exhaustive",exhaustive},{"fallback","disabled"},{"score_policy","raw_logits; no sampling transforms"},
+            {"protocol",protocol_metadata}};
     }
 };
 
@@ -96,7 +100,7 @@ inline json select_candidate(const CandidateTask & task, const std::vector<int32
     const auto & winner=task.candidates[best];
     const bool abstained=winner.id==task.unknown_id;
     return {{"schema_version",1},{"mode","candidate_score"},{"route","fast"},
-        {"template_version",CandidateTask::template_version},{"status",abstained?"abstained":"selected"},
+        {"template_version",task.version()},{"status",abstained?"abstained":"selected"},
         {"selected_candidate_id",abstained?json(nullptr):json(winner.id)},{"top_candidate_id",winner.id},
         {"scores",scores},{"logit_margin",maximum-second},{"tie_for_first",ties>1},
         {"tie_break","input_order"},{"normalization","candidate_set_only; not calibrated correctness"},

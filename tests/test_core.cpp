@@ -1,5 +1,6 @@
 #include "core.h"
 #include "candidate_score.h"
+#include "system_one.h"
 #include <limits>
 #include <iostream>
 #include <functional>
@@ -94,6 +95,57 @@ int main() {
         Metrics scored; scored.decision_start=2; scored.decision_ready=2.1;
         require(scored.snapshot(3)["output_tokens"]==0 && scored.snapshot(3)["decode_average_tps"].is_null() &&
             scored.snapshot(3)["decision_s"]==2.1,"decision metrics never fabricate generation throughput");
+        require(Config::parse({{"inference_mode","system_one"}}).dump()["effective_thinking"]==false,"structured mode is explicitly non-thinking");
+        require(throws([]{Config::parse({{"inference_mode","system_one"},{"gpu_layers",2}});}),"structured mode cannot bypass GPU rejection");
+        const auto request_json=json::parse(R"({"model":"jev-latest","state":{"message":"hello"},"questions":{
+            "decision_id":{"type":"choice","instructions":{"question":"route"},"criteria":{"one":null,"two":{"kind":"other"},"three":[]}},
+            "boolean_id":{"type":"noul","instructions":"Is it true?","criteria":{"true":"yes"}},
+            "score_id":{"type":"score","instructions":"Rate severity","criteria":["low","medium","high"]}}})");
+        auto request=SystemOneRequest::parse(request_json);
+        require(request.questions.size()==3 && request.requested_model=="jev-latest","mixed typed questions parsed without remote model substitution");
+        require(request.questions[0].task.automatic_labels && request.questions[0].task.candidates[1].id=="two","choice ids preserved, labels internal");
+        require(request.questions[0].system_prompt().find("decision_id")==std::string::npos &&
+            request.prompt().find("boolean_id")==std::string::npos,"routing ids and sibling questions are not model input");
+        auto alias=request_json; alias["ask"]=alias["questions"]; alias.erase("questions");
+        require(throws([&]{SystemOneRequest::parse(alias);}),"ask is not an accepted request field");
+        alias["questions"]=alias["ask"];
+        require(throws([&]{SystemOneRequest::parse(alias);}),"ask is rejected even alongside questions");
+        auto invalid_request=request_json; invalid_request["state"]=nullptr;
+        require(throws([&]{SystemOneRequest::parse(invalid_request);}),"null state rejected");
+        invalid_request=request_json; invalid_request["model"]="arbitrary-model";
+        require(throws([&]{SystemOneRequest::parse(invalid_request);}),"unknown model does not silently change execution");
+        invalid_request=request_json; invalid_request["assets"]={{"image",{{"type","image"}}}};
+        require(throws([&]{SystemOneRequest::parse(invalid_request);}),"vision assets fail explicitly");
+        invalid_request=request_json; invalid_request["questions"]["decision_id"]["type"]="box";
+        require(throws([&]{SystemOneRequest::parse(invalid_request);}),"unsupported typed question rejected before batch execution");
+        invalid_request=request_json; invalid_request["questions"]["score_id"]["criteria"]=json::array({"one"});
+        require(throws([&]{SystemOneRequest::parse(invalid_request);}),"score requires at least two ordered levels");
+        auto large_choice=request_json; auto & options=large_choice["questions"]["decision_id"]["criteria"];
+        options=json::object();
+        for (int i=0;i<255;++i) options[std::to_string(i)]="option";
+        require(SystemOneRequest::parse(large_choice).questions[0].task.candidates.size()==255,"choice schema accepts 255 options");
+        options["extra"]="option";
+        require(throws([&]{SystemOneRequest::parse(large_choice);}),"choice schema rejects more than 255 options");
+        const auto choice_rows=json::array({{{"id","one"},{"candidate_normalized_score",.6}},
+            {{"id","two"},{"candidate_normalized_score",.3}},{{"id","three"},{"candidate_normalized_score",.1}}});
+        const auto choice_answer=system_one_answer(request.questions[0],choice_rows);
+        require(choice_answer["choice"]=="one" && std::abs(choice_answer["confidence"].get<double>()-.4)<1e-12,"published choice confidence formula");
+        const auto boolean_answer=system_one_answer(request.questions[1],json::array({
+            {{"id","false"},{"candidate_normalized_score",.25}},{{"id","true"},{"candidate_normalized_score",.75}}}));
+        require(boolean_answer["noul"]==.75 && !boolean_answer.contains("confidence"),"noul returns true probability with no separate confidence");
+        const auto score_answer=system_one_answer(request.questions[2],json::array({
+            {{"id","0"},{"candidate_normalized_score",0.0}},{{"id","1"},{"candidate_normalized_score",.57}},
+            {{"id","2"},{"candidate_normalized_score",.43}}}));
+        require(std::abs(score_answer["score"].get<double>()-1.43)<1e-12 &&
+            std::abs(score_answer["confidence"].get<double>()-.355)<1e-12,"score is expectation with published ordered-level confidence");
+        require(score_answer["legend"]["2"]=="high","score legend uses original levels");
+        auto invalid_rows=choice_rows; invalid_rows[0]["candidate_normalized_score"]=.8;
+        require(throws([&]{system_one_answer(request.questions[0],invalid_rows);}),"invalid probability mass rejected");
+        invalid_rows=choice_rows; invalid_rows[0]["id"]="wrong";
+        require(throws([&]{system_one_answer(request.questions[0],invalid_rows);}),"probability ids cannot be misassigned");
+        const auto constant=SystemOneRequest::parse(json::parse(R"({"state":"","questions":{"only":{"type":"choice","instructions":"choose","criteria":{"single":null}}}})"));
+        require(!constant.prompt().empty() && system_one_answer(constant.questions[0],json::array({
+            {{"id","single"},{"candidate_normalized_score",1.0}}}))["confidence"]==1.0,"one-option closed choice is deterministic");
         std::cout << checks << " checks passed\n";
         return 0;
     } catch(const std::exception & e) { std::cerr<<e.what()<<'\n'; return 1; }

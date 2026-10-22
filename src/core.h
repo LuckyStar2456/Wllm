@@ -56,9 +56,10 @@ struct Config {
         return c;
     }
     void validate() const {
-        if (inference_mode!="generate" && inference_mode!="candidate_score") throw std::runtime_error("inference_mode must be generate or candidate_score");
-        if (inference_mode=="candidate_score" && (gpu_layers || cpu_weight_repacking))
-            throw std::runtime_error("candidate_score currently requires the validated CPU path with repacking off");
+        if (inference_mode!="generate" && inference_mode!="candidate_score" && inference_mode!="system_one")
+            throw std::runtime_error("inference_mode must be generate, candidate_score or system_one");
+        if (inference_mode!="generate" && (gpu_layers || cpu_weight_repacking))
+            throw std::runtime_error("Decision modes currently require the validated CPU path with repacking off");
         if (context < 512 || context > 262144) throw std::runtime_error("context must be 512..262144 (default 16384); no automatic shrinking");
         if (threads < 1 || threads > 256 || threads_batch < 0 || threads_batch > 256 || batch < 1 || batch > context) throw std::runtime_error("Invalid threads or batch");
         if (max_tokens != -1 && max_tokens < 1) throw std::runtime_error("max_tokens must be -1 or positive");

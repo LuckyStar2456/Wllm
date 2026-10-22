@@ -1,0 +1,18 @@
+{
+  "model": "wllm-local",
+  "state": {
+    "user_request": "请把客厅的灯打开",
+    "context": "客厅有一盏可控制的灯。"
+  },
+  "questions": {
+    "action": {
+      "type": "choice",
+      "instructions": "根据状态选择下一步动作。目标不明确或不在其他选项内时选择 clarify。",
+      "criteria": {
+        "turn_on": "打开灯",
+        "turn_off": "关闭灯",
+        "clarify": "询问用户以澄清需求"
+      }
+    }
+  }
+}

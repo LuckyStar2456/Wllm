@@ -19,5 +19,7 @@ __pycache__/
 !/reports/context16k-validation.json
 !/reports/candidate-score-validation.md
 !/reports/candidate-score-validation.json
+!/reports/system-one-validation.md
+!/reports/system-one-validation.json
 /configs/local.json
 *.user

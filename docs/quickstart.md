@@ -107,6 +107,15 @@ py -3.11 scripts/prepare_model.py
 
 ## 当前范围
 
+结构化 System One 请求优先使用：
+
+```powershell
+./scripts/run.ps1 -Mode system_one -RequestFile configs/system-one.example.json
+./scripts/run.ps1 -Mode system_one -Interactive
+```
+
+传入 `state + questions` JSON，返回具名 `answers`，支持 choice/noul/score；不接受 ask。无需另写候选文件或单 token 标签。文件入口支持多行 JSON，交互入口每行一个完整 JSON；错误请求可以修改后重试，取消/超时结束会话。实际使用本地配置的 Qwen3.5，不调用 JEV；每题独立串行计算，权重驻留复用。示例和分数含义见[协议说明](system-one-protocol.md)，本机证据见[适配报告](../reports/system-one-validation.md)。
+
 候选打分快速决策模式（System 1 分支）的 CPU 显式首版已实现：`./scripts/run.ps1 -Mode candidate_score -CandidatesFile configs/light-switch.candidates.json -Prompt '请开灯'`。stdout 返回一行 JSON 决策，指标与说明走 stderr；`selected_candidate_id` 为选择结果，unknown 获胜时状态为 `abstained` 且该字段为 null。可以加 `-Interactive` 在相同候选下连续处理独立问题。普通生成仍默认开启思考；候选分支记录有效非思考、无采样，不改默认配置。
 
 候选文件要求至少两个唯一 ID/普通单 token 标签，并提供 `unknown_id` 或显式 `exhaustive: true`；详细协议、边界和复现见[模式说明](candidate-score-mode.md)。首版不支持 GPU、未通过验收的 CPU 重排、多 token 标签或自动思考回退。`--logits-file` 仍是独立诊断导出，不是启用此模式的参数；广泛任务质量与正式性能另行验收。

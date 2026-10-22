@@ -1,0 +1,463 @@
+{
+  "schema_version": 1,
+  "date": "2026-10-22",
+  "status": "bounded_cpu_text_protocol_acceptance_passed",
+  "base_commit": "a950e70",
+  "llama_commit": "f2918cabbffe8abf8e2a90c1c089085fa116c2cf",
+  "exe_sha256": "978d7bdfd40f1281d29458116f798e5600171a376964887f97c70e21b40dfe18",
+  "hardware": {
+    "cpu": "Intel Core i5-1135G7",
+    "cores": 4,
+    "logical_processors": 8,
+    "physical_memory_bytes": 16859500544
+  },
+  "cpu_build": "AVX2",
+  "model_baseline": "existing local Qwen3.5-9B Q4_K_M text GGUF; unchanged",
+  "context": 16384,
+  "cache_k": "f16",
+  "cache_v": "f16",
+  "recurrent_state": "f32",
+  "protocol": {
+    "request": [
+      "model",
+      "state",
+      "questions"
+    ],
+    "response": [
+      "model",
+      "answers",
+      "usage",
+      "_wllm"
+    ],
+    "question_types": [
+      "choice",
+      "noul",
+      "score"
+    ],
+    "ask_supported": false,
+    "text_only": true,
+    "http_service": false,
+    "execution": "sequential independent question states; resident weights",
+    "remote_calls": false
+  },
+  "checks": {
+    "native": 79,
+    "system_one_model_tests": 6,
+    "legacy_candidate_model_tests": 7,
+    "default_generation_integration_tests": 8,
+    "resource_calibration_and_summary_tests": 19,
+    "powershell_example_request": true
+  },
+  "raw_evidence": {
+    "system_one": "reports\\system-one-1792667730916626600",
+    "candidate_score": "reports\\candidate-score-1792667899713738500",
+    "default_generation": "reports/acceptance",
+    "wrapper": "reports/system-one-wrapper.stdout.json"
+  },
+  "vocabulary_logits_count": 248320,
+  "legacy_nonthinking_reference_full_logits_byte_equal": true,
+  "cases": {
+    "mixed": {
+      "exit_code": 0,
+      "responses": [
+        {
+          "model": "wllm-qwen3.5-q4_k_m",
+          "answers": {
+            "light": {
+              "type": "choice",
+              "choice": "on",
+              "probabilities": {
+                "on": 0.9358420972373894,
+                "off": 0.06415790276261049
+              },
+              "confidence": 0.8716841944747789
+            },
+            "is_on": {
+              "type": "noul",
+              "noul": 0.9972151104356026
+            },
+            "level": {
+              "type": "score",
+              "score": 0.995027931888887,
+              "probabilities": {
+                "0": 0.004972068111112972,
+                "1": 0.995027931888887
+              },
+              "legend": {
+                "0": {
+                  "state": "灯关闭"
+                },
+                "1": {
+                  "state": "灯开启"
+                }
+              },
+              "confidence": 0.9900558637777741
+            }
+          },
+          "usage": {
+            "input_tokens": 488,
+            "output_tokens": 0
+          },
+          "status": "completed"
+        }
+      ]
+    },
+    "independent-a": {
+      "exit_code": 0,
+      "responses": [
+        {
+          "model": "wllm-qwen3.5-q4_k_m",
+          "answers": {
+            "light": {
+              "type": "choice",
+              "choice": "on",
+              "probabilities": {
+                "on": 0.9358420972373894,
+                "off": 0.06415790276261049
+              },
+              "confidence": 0.8716841944747789
+            }
+          },
+          "usage": {
+            "input_tokens": 156,
+            "output_tokens": 0
+          },
+          "status": "completed"
+        }
+      ]
+    },
+    "independent-b": {
+      "exit_code": 0,
+      "responses": [
+        {
+          "model": "wllm-qwen3.5-q4_k_m",
+          "answers": {
+            "unrelated_conflicting_name": {
+              "type": "choice",
+              "choice": "on",
+              "probabilities": {
+                "on": 0.9358420972373894,
+                "off": 0.06415790276261049
+              },
+              "confidence": 0.8716841944747789
+            },
+            "companion": {
+              "type": "choice",
+              "choice": "only",
+              "probabilities": {
+                "only": 1.0
+              },
+              "confidence": 1.0
+            }
+          },
+          "usage": {
+            "input_tokens": 156,
+            "output_tokens": 0
+          },
+          "status": "completed"
+        }
+      ]
+    },
+    "invalid-type": {
+      "exit_code": 1,
+      "responses": [
+        {
+          "model": "wllm-qwen3.5-q4_k_m",
+          "answers": {},
+          "usage": {
+            "input_tokens": 0,
+            "output_tokens": 0
+          },
+          "error": {
+            "type": "invalid_request",
+            "message": "Unsupported question type; use choice, noul or score",
+            "question_id": null
+          },
+          "status": "failed"
+        }
+      ]
+    },
+    "missing-state": {
+      "exit_code": 1,
+      "responses": [
+        {
+          "model": "wllm-qwen3.5-q4_k_m",
+          "answers": {},
+          "usage": {
+            "input_tokens": 0,
+            "output_tokens": 0
+          },
+          "error": {
+            "type": "invalid_request",
+            "message": "state must be a string, object or array",
+            "question_id": null
+          },
+          "status": "failed"
+        }
+      ]
+    },
+    "ask-rejected": {
+      "exit_code": 1,
+      "responses": [
+        {
+          "model": "wllm-qwen3.5-q4_k_m",
+          "answers": {},
+          "usage": {
+            "input_tokens": 0,
+            "output_tokens": 0
+          },
+          "error": {
+            "type": "invalid_request",
+            "message": "Unknown System One field: ask",
+            "question_id": null
+          },
+          "status": "failed"
+        }
+      ]
+    },
+    "unknown-model": {
+      "exit_code": 1,
+      "responses": [
+        {
+          "model": "wllm-qwen3.5-q4_k_m",
+          "answers": {},
+          "usage": {
+            "input_tokens": 0,
+            "output_tokens": 0
+          },
+          "error": {
+            "type": "invalid_request",
+            "message": "Unknown model alias; use wllm-local (no remote Jev is invoked)",
+            "question_id": null
+          },
+          "status": "failed"
+        }
+      ]
+    },
+    "stdin-json": {
+      "exit_code": 0,
+      "responses": [
+        {
+          "model": "wllm-qwen3.5-q4_k_m",
+          "answers": {
+            "one": {
+              "type": "choice",
+              "choice": "only",
+              "probabilities": {
+                "only": 1.0
+              },
+              "confidence": 1.0
+            }
+          },
+          "usage": {
+            "input_tokens": 0,
+            "output_tokens": 0
+          },
+          "status": "completed"
+        }
+      ]
+    },
+    "interactive": {
+      "exit_code": 1,
+      "responses": [
+        {
+          "model": "wllm-qwen3.5-q4_k_m",
+          "answers": {},
+          "usage": {
+            "input_tokens": 0,
+            "output_tokens": 0
+          },
+          "error": {
+            "type": "invalid_request",
+            "message": "[json.exception.parse_error.101] parse error at line 1, column 2: syntax error while parsing value - invalid literal; last read: 'no'",
+            "question_id": null
+          },
+          "status": "failed"
+        },
+        {
+          "model": "wllm-qwen3.5-q4_k_m",
+          "answers": {
+            "light": {
+              "type": "choice",
+              "choice": "on",
+              "probabilities": {
+                "on": 0.9358420972373894,
+                "off": 0.06415790276261049
+              },
+              "confidence": 0.8716841944747789
+            }
+          },
+          "usage": {
+            "input_tokens": 156,
+            "output_tokens": 0
+          },
+          "status": "completed"
+        },
+        {
+          "model": "wllm-qwen3.5-q4_k_m",
+          "answers": {
+            "light": {
+              "type": "choice",
+              "choice": "off",
+              "probabilities": {
+                "on": 0.002817394036311958,
+                "off": 0.997182605963688
+              },
+              "confidence": 0.994365211927376
+            }
+          },
+          "usage": {
+            "input_tokens": 156,
+            "output_tokens": 0
+          },
+          "status": "completed"
+        }
+      ]
+    },
+    "parent-timeout": {
+      "exit_code": 124,
+      "responses": [
+        {
+          "model": "wllm-qwen3.5-q4_k_m",
+          "answers": {},
+          "usage": {
+            "input_tokens": 0,
+            "output_tokens": 0
+          },
+          "error": {
+            "type": "timeout",
+            "message": "Question timed out",
+            "question_id": "light"
+          },
+          "status": "failed"
+        }
+      ]
+    },
+    "parent-cancel": {
+      "exit_code": 130,
+      "responses": [
+        {
+          "model": "wllm-qwen3.5-q4_k_m",
+          "answers": {},
+          "usage": {
+            "input_tokens": 0,
+            "output_tokens": 0
+          },
+          "error": {
+            "type": "cancelled",
+            "message": "System One request cancelled",
+            "question_id": "light"
+          },
+          "status": "failed"
+        }
+      ]
+    }
+  },
+  "default_generation_cases": {
+    "template": {
+      "exit_code": 0,
+      "record": "reports\\acceptance\\template-1792668096899817600.jsonl",
+      "end_reason": "inspected",
+      "input_tokens": 19,
+      "output_tokens": 0
+    },
+    "completion": {
+      "exit_code": 0,
+      "record": "reports\\acceptance\\completion-1792668097801235700.jsonl",
+      "end_reason": "eos",
+      "input_tokens": 22,
+      "output_tokens": 126
+    },
+    "one-token": {
+      "exit_code": 0,
+      "record": "reports\\acceptance\\one-token-1792668138476420900.jsonl",
+      "end_reason": "max_tokens",
+      "input_tokens": 11,
+      "output_tokens": 1
+    },
+    "context-full": {
+      "exit_code": 1,
+      "record": "reports\\acceptance\\context-full-1792668144145934100.jsonl",
+      "end_reason": "error",
+      "input_tokens": 0,
+      "output_tokens": 0
+    },
+    "memory-budget": {
+      "exit_code": 1,
+      "record": "reports\\acceptance\\memory-budget-1792668145643783900.jsonl",
+      "end_reason": "error",
+      "input_tokens": 0,
+      "output_tokens": 0
+    },
+    "timeout": {
+      "exit_code": 124,
+      "record": "reports\\acceptance\\timeout-1792668145791577600.jsonl",
+      "end_reason": "timeout",
+      "input_tokens": 0,
+      "output_tokens": 0
+    },
+    "cancel": {
+      "exit_code": 130,
+      "record": "reports\\acceptance\\cancel-1792668145932531700.jsonl",
+      "end_reason": "cancelled",
+      "input_tokens": 15,
+      "output_tokens": 4
+    },
+    "input-batches": {
+      "exit_code": 0,
+      "record": "reports\\acceptance\\input-batches-1792668151997038000.jsonl",
+      "end_reason": "max_tokens",
+      "input_tokens": 177,
+      "output_tokens": 1
+    },
+    "boundary-probe": {
+      "exit_code": 0,
+      "record": "reports\\acceptance\\boundary-probe-1792668172185490600.jsonl",
+      "end_reason": "inspected",
+      "input_tokens": 20,
+      "output_tokens": 0
+    },
+    "generation-boundary": {
+      "exit_code": 0,
+      "record": "reports\\acceptance\\generation-boundary-1792668173131863400.jsonl",
+      "end_reason": "context_limit",
+      "input_tokens": 511,
+      "output_tokens": 1
+    }
+  },
+  "wrapper_example": {
+    "model": "wllm-qwen3.5-q4_k_m",
+    "answers": {
+      "action": {
+        "type": "choice",
+        "choice": "turn_on",
+        "probabilities": {
+          "turn_on": 0.9966694058726543,
+          "turn_off": 0.0021770141507150274,
+          "clarify": 0.0011535799766307978
+        },
+        "confidence": 0.9950041088089813
+      }
+    },
+    "usage": {
+      "input_tokens": 195,
+      "output_tokens": 0
+    }
+  },
+  "limitations": [
+    "bounded protocol and small lamp task checks only; not Jev quality or performance equivalence",
+    "not a formal performance benchmark; background load and cache state uncontrolled",
+    "earlier run hit unchanged 1024MiB reserve; final complete six-test rerun passed",
+    "255-option limit checked at schema level; maximum-size model task quality and performance unverified",
+    "confidence uses published formulas over local candidate-normalized logits, not calibrated correctness",
+    "no prefix cache, question parallelism, vision, calibrated fallback or HTTP service implemented"
+  ],
+  "initial_attempt": {
+    "raw_folder": "reports/system-one-1792667489184657400",
+    "findings": [
+      "one resident request refused at about 1007MiB free RAM by existing 1024MiB reserve",
+      "test timeout argument .01 was invalid JSON numeric syntax; changed fixture to 0.01",
+      "ask alias removed per user instruction before final full rerun"
+    ]
+  }
+}

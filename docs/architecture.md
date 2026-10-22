@@ -50,6 +50,8 @@
 
 ### 2.1 独立任务分支：候选打分快速决策（CPU 首版）
 
+新增 `system_one` 作为结构化请求适配层：先完整校验 state/questions，再逐题构造候选任务，自动分配实际前缀有效的单 token 标签，调用相同 CPU 打分路径。每题保留相同 state 数据并建立独立上下文，权重跨题/交互请求驻留；没有跨题共享状态或并行执行。结果按题型映射为具名 answers，附本地模型标识、usage 和 `_wllm` 诊断。整个父请求共用取消和截止时间，任一题失败清空 answers；单选项 choice 走明示的常量映射。协议、支持范围和证据见[System One 文本协议](system-one-protocol.md)。
+
 请求分发已有两条路径：普通生成保持原模板、思考、采样与逐 token 输出；显式 `candidate_score` 校验候选和非思考答案前缀，执行完整 prefill，提取指定位置的候选标签 logits，返回选择或 unknown 拒答并提前结束，不进入生成循环。CLI 为 `--mode candidate_score --candidates FILE`，配置 `inference_mode` 默认 `generate`；首版只支持 CPU、关闭重排。完整协议与证据范围见[候选打分设计](candidate-score-mode.md)。
 
 首版只允许实际答案位置的普通单 token 标签，比较“完整答案前缀+标签”的分词以验证前缀不变，并核对解码字节与 token 唯一性；非法标签在 prefill 前拒绝。复用完整词表投影、检查全部 logits 有限，再做候选内归一化与确定性排序；不跳过主干，不创建采样器。输入、思考模板及候选协议改变后独立评测。16K、Q4_K_M、F16 KV/F32 循环状态不变；生成 token 为 0，决策延迟与选项 ID 单列，解码速度不适用。
