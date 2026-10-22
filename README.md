@@ -2,7 +2,7 @@
 
 Wllm 是独立的本地模型推理优化项目，正式名称为 **Wllm**。
 
-创建日期：2026-10-07。文档更新：2026-10-17，运行实现仍为现有 0.2。当前状态：已实现首批 CPU 基础优化与对照工具，新增权重驻留的连续独立请求模式；结果与限制见 [E2 报告](reports/e2-validation.md)，首版记录保留于[原型报告](reports/prototype-validation.md)。
+创建日期：2026-10-07。文档更新：2026-10-22，运行实现仍为现有 0.2。当前状态：已实现首批 CPU 基础优化与对照工具，新增权重驻留的连续独立请求模式；结果与限制见 [E2 报告](reports/e2-validation.md)，首版记录保留于[原型报告](reports/prototype-validation.md)。
 
 2026-10-21 推进最小资源账本与评测准入：新增不执行模型的资源探测、共享容量说明、Vulkan UUID/DXGI LUID 接口归并、F32 循环状态预算，以及逐次评测资源检查；聊天、代码和长文三类负载已准备。新增参考项目仍属研究项。当前内存余量未满足保守性能预算，未开展正式性能跑分或 GPU 模型验收，见[资源与基线准备报告](reports/resource-validation.md)。
 
@@ -18,6 +18,7 @@ Wllm 是独立的本地模型推理优化项目，正式名称为 **Wllm**。
 ./scripts/run.ps1 -Prompt '用中文解释什么是推理引擎。'
 ./scripts/run.ps1 -Context 8192 -Prompt '你好'
 ./scripts/run.ps1 -Interactive
+./scripts/run.ps1 -Mode candidate_score -CandidatesFile configs/light-switch.candidates.json -Prompt '请把客厅的灯打开'
 ```
 
 默认上下文 **16384（16K）**，按用户 2026-10-21 最新要求从 4K 扩展，支持自行调整；资源不足时明确报错，不自动缩短。历史 4K 的校准和性能结论不自动沿用。仓库提供源码，不包含模型、本机配置及可执行文件。准备和构建、参数、实时指标、取消及记录方式见[使用说明](docs/quickstart.md)。
@@ -46,6 +47,7 @@ Wllm 是独立的本地模型推理优化项目，正式名称为 **Wllm**。
 
 ## 当前范围
 
+- 2026-10-22 按最新优先级实现[候选打分快速决策模式](docs/candidate-score-mode.md)（System 1 分支）的 CPU 显式首版：处理输入后比较单 token 标签 logits，输出 JSON 选择或 unknown 拒答并结束，不生成文本 token；有界证据见[验收报告](reports/candidate-score-validation.md)。自动思考回退/多 token 评分未实现，广泛质量与稳定加速仍待验收，普通生成默认不变。
 - E0/E1 已完成，E2 首批提供模型加载复用、CPU 执行控制和对照工具；后续优化仍按级推进。
 - 已增加 CPU 实际内存诊断与绑定模型/构建/配置的校准准入；独立 Vulkan 构建完成了 Iris Xe 两层放置的小输入运行探测，完整 GPU 数值与性能验收仍待完成。见[本轮报告](reports/memory-backend-validation.md)。
 - 后续 4K 同条件 CPU/Vulkan 数值筛选未通过：生成 token 相同但完整词表 logits 超出既有门槛，未开展正式性能比较，实验入口不作为默认优化。见[Vulkan 正确性报告](reports/vulkan-validation.md)。
@@ -58,6 +60,7 @@ Wllm 是独立的本地模型推理优化项目，正式名称为 **Wllm**。
 
 - [项目目标与决策](docs/project-goals.md)：用户已确认内容、A/B/C 比较、边界和待决事项。
 - [架构设计](docs/architecture.md)：执行、状态、资源、配置与扩展边界。
+- [候选打分快速决策模式](docs/candidate-score-mode.md)：CPU 显式首版运行、输入输出与计量；独立质量边界及后续回退设计。
 - [实施与评测路线](docs/implementation-plan.md)：原型验收、计量口径，以及 E2–E5 逐项任务、参考项目/机制、前置条件与验收；含大模型和弱硬件策略。
 - [原型使用说明](docs/quickstart.md)：构建、模型适配、运行、上下文与指标。
 - [CPU 基础优化](docs/cpu-optimization.md)：分阶段线程、执行开关、可重复的对照与正确性检查。

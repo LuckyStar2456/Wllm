@@ -1,4 +1,6 @@
 #include "core.h"
+#include "candidate_score.h"
+#include <limits>
 #include <iostream>
 #include <functional>
 using namespace wllm;
@@ -51,6 +53,47 @@ int main() {
         require(m.snapshot(9)["process_io_read_bytes"].is_null(),"unknown process IO not zero");
         Metrics next;
         require(next.snapshot(0)["output_tokens"]==0,"request reset");
+        require(c.inference_mode=="generate" && c.dump()["effective_thinking"]==true,"normal generation stays the default");
+        const auto score_config=Config::parse({{"inference_mode","candidate_score"}});
+        require(score_config.thinking && !score_config.dump()["effective_thinking"].get<bool>() &&
+            !score_config.dump()["sampling_applied"].get<bool>(),"explicit score mode preserves requested settings and records effective behavior");
+        require(throws([]{Config::parse({{"inference_mode","score"}});}),"unknown inference mode rejected");
+        require(throws([]{Config::parse({{"inference_mode","candidate_score"},{"gpu_layers",2}});}),"GPU numerical rejection cannot be bypassed");
+        require(throws([]{Config::parse({{"inference_mode","candidate_score"},{"cpu_weight_repacking",true}});}),"score mode rejects unaccepted repacking");
+        check_context(16384,16384,false);
+        require(throws([]{check_context(16385,16384,false);}),"score input respects exact context without truncation");
+        const json rows=json::array({{{"id","yes"},{"label","A"},{"description","yes"}},
+            {{"id","unknown"},{"label","B"},{"description","unknown"}}});
+        auto spec=json({{"candidates",rows},{"unknown_id","unknown"}});
+        auto task=CandidateTask::parse(spec);
+        require(throws([&]{CandidateTask::parse({{"candidates",rows}});}),"closed set must be explicit");
+        require(CandidateTask::parse({{"candidates",rows},{"exhaustive",true}}).exhaustive,"explicit exhaustive set");
+        auto bad=spec; bad["candidates"][1]["id"]="yes";
+        require(throws([&]{CandidateTask::parse(bad);}),"duplicate id rejected");
+        bad=spec; bad["candidates"][1]["label"]="A";
+        require(throws([&]{CandidateTask::parse(bad);}),"duplicate label rejected");
+        bad=spec; bad["candidates"][1]["label"]=" B";
+        require(throws([&]{CandidateTask::parse(bad);}),"label whitespace rejected");
+        bad=spec; bad["unknown_id"]="missing";
+        require(throws([&]{CandidateTask::parse(bad);}),"invalid unknown id rejected");
+        bad=spec; bad["fallback"]="reasoning";
+        require(throws([&]{CandidateTask::parse(bad);}),"unimplemented fallback cannot silently enable");
+        const float logits[]={10000.0f,9999.0f,20000.0f};
+        auto decision=select_candidate(task,{0,1},logits,3);
+        require(decision["selected_candidate_id"]=="yes" && decision["logit_margin"]==1.0,"raw-logit selection independent of other vocabulary winners");
+        require(std::abs(decision["scores"][0]["candidate_normalized_score"].get<double>()-1.0/(1+std::exp(-1.0)))<1e-12,"stable candidate-only normalization at extreme logits");
+        const float tied[]={1.0f,1.0f};
+        decision=select_candidate(task,{0,1},tied,2);
+        require(decision["tie_for_first"] && decision["top_candidate_id"]=="yes","ties explicitly use stable input order");
+        decision=select_candidate(task,{1,0},logits,3);
+        require(decision["status"]=="abstained" && decision["selected_candidate_id"].is_null() && decision["top_candidate_id"]=="unknown","unknown winner is abstention");
+        require(throws([&]{select_candidate(task,{0,0},logits,3);}),"duplicate token mapping rejected");
+        require(throws([&]{select_candidate(task,{0,3},logits,3);}),"invalid vocabulary index rejected");
+        const float invalid[]={1,2,std::numeric_limits<float>::quiet_NaN()};
+        require(throws([&]{select_candidate(task,{0,1},invalid,3);}),"invalid unselected logits cannot be concealed");
+        Metrics scored; scored.decision_start=2; scored.decision_ready=2.1;
+        require(scored.snapshot(3)["output_tokens"]==0 && scored.snapshot(3)["decode_average_tps"].is_null() &&
+            scored.snapshot(3)["decision_s"]==2.1,"decision metrics never fabricate generation throughput");
         std::cout << checks << " checks passed\n";
         return 0;
     } catch(const std::exception & e) { std::cerr<<e.what()<<'\n'; return 1; }

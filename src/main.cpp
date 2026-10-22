@@ -4,6 +4,7 @@
 #include <io.h>
 #include <intrin.h>
 #include "core.h"
+#include "candidate_score.h"
 #include "resources.h"
 #include "profile.h"
 #include "terminal.h"
@@ -67,6 +68,7 @@ struct State {
     Metrics metrics;
     Profile profile;
     json identity = json::object();
+    json decision = nullptr;
     Clock::time_point start = Clock::now();
     std::mutex mutex;
     std::condition_variable wake;
@@ -152,6 +154,7 @@ static void display(const json & j, bool final = false) {
       << "MiB private=" << value(j,"private_bytes",1048576) << "MiB free=" << value(j,"system_available_bytes",1048576)
       << "MiB peak=" << value(j,"sampled_peak_working_set_bytes",1048576) << "MiB";
     s << " reused=" << j.at("model_reused");
+    if (!j.at("decision_s").is_null()) s << " decision=" << value(j,"decision_s") << "s";
     if (final) s << " reason=" << j.at("end_reason").get<std::string>();
     // Separate stderr lines work both on a terminal and when stdout is redirected.
     std::cerr << s.str() << '\n';
@@ -322,7 +325,30 @@ static void set_batch(llama_batch_ext * batch, const llama_token * tokens, int c
     if (output && !llama_batch_ext_set_output_logits(batch,count-1,true)) throw std::runtime_error("Cannot request output logits");
 }
 
-static std::string run(State & s, const std::string & prompt, const std::string & system, const std::string & inspect_path, const std::string & logits_path, ModelPtr * resident) {
+static std::vector<int32_t> candidate_tokens(const CandidateTask & task, const llama_vocab * vocab,
+        const std::string & prefix, const std::vector<llama_token> & prefix_tokens) {
+    std::vector<int32_t> result;
+    std::set<int32_t> seen;
+    for (const auto & c:task.candidates) {
+        const auto combined=tokenize(vocab,prefix+c.label);
+        if (combined.size()!=prefix_tokens.size()+1 || !std::equal(prefix_tokens.begin(),prefix_tokens.end(),combined.begin()))
+            throw std::runtime_error("Label must be one token at the unchanged answer boundary: " + c.id);
+        const auto token=combined.back();
+        const auto attr=llama_vocab_get_attr(vocab,token);
+        if ((attr & (LLAMA_TOKEN_ATTR_CONTROL|LLAMA_TOKEN_ATTR_UNKNOWN|LLAMA_TOKEN_ATTR_UNUSED|LLAMA_TOKEN_ATTR_USER_DEFINED)) ||
+            llama_vocab_is_eog(vocab,token) || !seen.insert(token).second)
+            throw std::runtime_error("Label is special or maps to a duplicate token: " + c.id);
+        std::vector<char> piece(c.label.size()+32);
+        const int n=llama_token_to_piece(vocab,token,piece.data(),int(piece.size()),0,false);
+        if (n<0 || std::string(piece.data(),size_t(n))!=c.label)
+            throw std::runtime_error("Label bytes do not match the answer token: " + c.id);
+        result.push_back(token);
+    }
+    return result;
+}
+
+static std::string run(State & s, const std::string & prompt, const std::string & system, const std::string & inspect_path,
+        const std::string & logits_path, ModelPtr * resident, const CandidateTask * task) {
     ModelPtr transient(nullptr, llama_model_free);
     auto & model = resident ? *resident : transient;
     { std::lock_guard<std::mutex> lock(s.mutex); s.metrics.model_reused = bool(model); }
@@ -357,23 +383,43 @@ static std::string run(State & s, const std::string & prompt, const std::string 
     if (!template_src || !*template_src) throw std::runtime_error("GGUF has no chat template; refusing to guess one");
     auto templates=common_chat_templates_init(model.get(),"");
     common_chat_templates_inputs inputs;
-    inputs.enable_thinking=c.thinking;
-    inputs.chat_template_kwargs["enable_thinking"]=c.thinking ? "true" : "false";
-    if (!system.empty()) { common_chat_msg m; m.role="system"; m.content=system; inputs.messages.push_back(m); }
-    common_chat_msg user; user.role="user"; user.content=prompt; inputs.messages.push_back(user);
+    const bool thinking=!task && c.thinking;
+    inputs.enable_thinking=thinking;
+    inputs.chat_template_kwargs["enable_thinking"]=thinking ? "true" : "false";
+    const std::string effective_system=task?task->system_prompt(system):system;
+    const std::string effective_prompt=task?task->user_prompt(prompt):prompt;
+    if (!effective_system.empty()) { common_chat_msg m; m.role="system"; m.content=effective_system; inputs.messages.push_back(m); }
+    common_chat_msg user; user.role="user"; user.content=effective_prompt; inputs.messages.push_back(user);
     const auto chat=common_chat_templates_apply(templates.get(),inputs);
     const auto tokens=tokenize(vocab,chat.prompt);
-    check_context(int(tokens.size()),c.context);
+    check_context(int(tokens.size()),c.context,!task);
+    std::vector<int32_t> labels;
+    if (task) {
+        const std::string boundary="<|im_start|>assistant\n<think>\n\n</think>\n\n";
+        if (chat.prompt.size()<boundary.size() || chat.prompt.compare(chat.prompt.size()-boundary.size(),boundary.size(),boundary)!=0)
+            throw std::runtime_error("Unverified non-thinking answer boundary; candidate_score requires the recorded Qwen3.5 template");
+        labels=candidate_tokens(*task,vocab,chat.prompt,tokens);
+    }
     {
         std::lock_guard<std::mutex> lock(s.mutex);
         s.metrics.input_total=int(tokens.size());
         s.identity["template_source"]="GGUF tokenizer.chat_template via upstream Jinja";
         s.identity["thinking_prompt_suffix"]=chat.generation_prompt;
+        if (task) {
+            s.identity["candidate_task"]=task->manifest();
+            s.identity["candidate_token_ids"]=labels;
+            s.identity["generation_loop_entered"]=false;
+        }
     }
     if (!inspect_path.empty()) {
         std::ofstream out(fs::u8path(inspect_path),std::ios::binary);
         if (!out) throw std::runtime_error("Cannot write inspect file");
-        out << json({{"rendered_prompt",chat.prompt},{"token_ids",tokens},{"template",template_src},{"config",c.dump()}}).dump(2);
+        json inspected={{"rendered_prompt",chat.prompt},{"token_ids",tokens},{"template",template_src},{"config",c.dump()}};
+        if (task) {
+            inspected["candidate_task"]=task->manifest(); inspected["candidate_token_ids"]=labels;
+            inspected["effective_system"]=effective_system; inspected["effective_user"]=effective_prompt;
+        }
+        out << inspected.dump(2);
         { std::lock_guard<std::mutex> lock(s.mutex); s.metrics.load_end=s.now(); }
         return "inspected";
     }
@@ -396,19 +442,22 @@ static std::string run(State & s, const std::string & prompt, const std::string 
         s.metrics.load_end=s.now(); s.metrics.stage="prefill"; s.metrics.prefill_start=s.now();
         s.sample_memory();
     }
-    auto sp=llama_sampler_chain_default_params();
-    std::unique_ptr<llama_sampler,decltype(&llama_sampler_free)> sampler(llama_sampler_chain_init(sp),llama_sampler_free);
-    llama_sampler_chain_add(sampler.get(),llama_sampler_init_penalties(llama_vocab_n_tokens(vocab),
-        c.repeat_last_n < 0 ? c.context : c.repeat_last_n,float(c.repeat_penalty),float(c.frequency_penalty),float(c.presence_penalty)));
-    if (c.temperature==0) llama_sampler_chain_add(sampler.get(),llama_sampler_init_greedy());
-    else {
-        llama_sampler_chain_add(sampler.get(),llama_sampler_init_top_k(c.top_k));
-        llama_sampler_chain_add(sampler.get(),llama_sampler_init_top_p(float(c.top_p),1));
-        llama_sampler_chain_add(sampler.get(),llama_sampler_init_min_p(float(c.min_p),1));
-        llama_sampler_chain_add(sampler.get(),llama_sampler_init_temp(float(c.temperature)));
-        llama_sampler_chain_add(sampler.get(),llama_sampler_init_dist(c.seed));
+    std::unique_ptr<llama_sampler,decltype(&llama_sampler_free)> sampler(nullptr,llama_sampler_free);
+    if (!task) {
+        auto sp=llama_sampler_chain_default_params();
+        sampler.reset(llama_sampler_chain_init(sp));
+        llama_sampler_chain_add(sampler.get(),llama_sampler_init_penalties(llama_vocab_n_tokens(vocab),
+            c.repeat_last_n < 0 ? c.context : c.repeat_last_n,float(c.repeat_penalty),float(c.frequency_penalty),float(c.presence_penalty)));
+        if (c.temperature==0) llama_sampler_chain_add(sampler.get(),llama_sampler_init_greedy());
+        else {
+            llama_sampler_chain_add(sampler.get(),llama_sampler_init_top_k(c.top_k));
+            llama_sampler_chain_add(sampler.get(),llama_sampler_init_top_p(float(c.top_p),1));
+            llama_sampler_chain_add(sampler.get(),llama_sampler_init_min_p(float(c.min_p),1));
+            llama_sampler_chain_add(sampler.get(),llama_sampler_init_temp(float(c.temperature)));
+            llama_sampler_chain_add(sampler.get(),llama_sampler_init_dist(c.seed));
+        }
+        for (auto t:tokens) llama_sampler_accept(sampler.get(),t);
     }
-    for (auto t:tokens) llama_sampler_accept(sampler.get(),t);
     std::unique_ptr<llama_batch_ext,decltype(&llama_batch_ext_free)> batch(llama_batch_ext_init(ctx.get()),llama_batch_ext_free);
     int pos=0;
     while(pos<int(tokens.size())) {
@@ -429,7 +478,7 @@ static std::string run(State & s, const std::string & prompt, const std::string 
         { std::lock_guard<std::mutex> lock(s.mutex); s.metrics.input_done=pos;
           ++s.metrics.prefill_batches; if (output) ++s.metrics.prefill_logits_batches; }
     }
-    { std::lock_guard<std::mutex> lock(s.mutex); s.metrics.prefill_end=s.now(); s.metrics.stage="generating"; }
+    { std::lock_guard<std::mutex> lock(s.mutex); s.metrics.prefill_end=s.now(); s.metrics.stage=task?"selecting":"generating"; }
     observe_allocations(s, ctx.get(), "prefill_complete");
     if (!logits_path.empty()) {
         // Diagnostic only: full, unsampled vocabulary logits for this fixed input prefix.
@@ -438,6 +487,15 @@ static std::string run(State & s, const std::string & prompt, const std::string 
         std::ofstream out(fs::u8path(logits_path), std::ios::binary);
         out.write(reinterpret_cast<const char *>(logits), std::streamsize(llama_vocab_n_tokens(vocab)) * sizeof(float));
         if (!out) throw std::runtime_error("Cannot write logits diagnostic");
+    }
+    if (task) {
+        if (s.cancelled()) return s.timed_out ? "timeout" : "cancelled";
+        { std::lock_guard<std::mutex> lock(s.mutex); s.metrics.decision_start=s.now(); }
+        auto decision=select_candidate(*task,labels,llama_get_logits_ith(ctx.get(),-1),llama_vocab_n_tokens(vocab));
+        if (s.cancelled()) return s.timed_out ? "timeout" : "cancelled";
+        const auto reason=decision.at("status").get<std::string>();
+        { std::lock_guard<std::mutex> lock(s.mutex); s.metrics.decision_ready=s.now(); s.decision=std::move(decision); }
+        return reason;
     }
     int generated=0;
     while(true) {
@@ -486,6 +544,7 @@ static void usage() {
         "  --temperature N --thinking on|off --timeout SECONDS\n"
         "  --record PATH --cancel-file PATH --inspect PATH --quiet-metrics\n"
         "  --logits-file PATH (diagnostic: final prefill logits, float32 little-endian)\n"
+        "  --mode generate|candidate_score --candidates UTF8_JSON (CPU; returns a JSON decision)\n"
         "  --profile (phase timings) --profile-ops (intrusive operator diagnostic)\n"
         "  --resources PATH (write resource/CPU budget report; no inference or prompt read)\n"
         "  --memory-diagnostic (allocation/OS peaks; excluded from performance benchmarks)\n"
@@ -508,7 +567,7 @@ public:
 
 static int execute_request(const Config & config, const std::string & prompt, const std::string & system,
         const std::string & inspect, const std::string & logits_file, const std::string & cancel_file,
-        bool quiet, bool profile, bool profile_ops, bool memory_diagnostic, ModelPtr * resident) {
+        bool quiet, bool profile, bool profile_ops, bool memory_diagnostic, ModelPtr * resident, const CandidateTask * task) {
     State state; state.config=config; state.cancel_file=cancel_file;
     state.memory_diagnostic=memory_diagnostic;
     state.profile.enabled=profile || profile_ops; state.profile.operators=profile_ops;
@@ -522,12 +581,14 @@ static int execute_request(const Config & config, const std::string & prompt, co
     if(!record) throw std::runtime_error("Cannot open metric record file");
     const std::string id=std::to_string(std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::system_clock::now().time_since_epoch()).count())+"-"+std::to_string(GetCurrentProcessId());
     record << json({{"event","start"},{"schema_version",1},{"request_id",id},{"config",state.config.dump()},
+        {"candidate_task",task?task->manifest():json(nullptr)},
         {"logits_diagnostic",!logits_file.empty()},
         {"memory_diagnostic",memory_diagnostic},
         {"profiling_diagnostic",state.profile.enabled},{"operator_profiling",profile_ops},
         {"cpu_build",WLLM_CPU_TARGET},{"resident_session",resident!=nullptr},
         {"llama_commit",WLLM_LLAMA_COMMIT},{"window_s",2},{"pid",GetCurrentProcessId()}}).dump() << '\n';
-    std::cerr << "[Wllm] Q4_K_M CPU context=" << state.config.context << " thinking=" << (state.config.thinking?"on":"off")
+    std::cerr << "[Wllm] Q4_K_M CPU context=" << state.config.context << " thinking=" << (!task && state.config.thinking?"on":"off")
+              << " mode=" << state.config.inference_mode
               << " cpu_build=" << WLLM_CPU_TARGET
               << " pid=" << GetCurrentProcessId() << " record=" << state.config.record << '\n';
     std::cerr << "[Wllm] model=" << state.config.model << " threads=" << state.config.threads
@@ -540,11 +601,14 @@ static int execute_request(const Config & config, const std::string & prompt, co
               << " presence_penalty=" << state.config.presence_penalty << '\n';
     if (state.config.cpu_weight_repacking)
         std::cerr << "[Wllm] Experimental CPU repacking: failed current baseline numerical checks; research use only.\n";
-    state.terminal.start(quiet);
+    // A decision is one JSON line, including on a real console; never place it in the alternate screen.
+    state.terminal.start(quiet || task!=nullptr);
     std::thread monitor(observer,std::ref(state),std::ref(record),std::cref(id),quiet);
     std::string reason;
-    try { reason=run(state,prompt,system,inspect,logits_file,resident); }
+    try { reason=run(state,prompt,system,inspect,logits_file,resident,task); }
     catch(const std::exception & e) { reason=state.cancelled()?(state.timed_out?"timeout":"cancelled"):"error"; std::lock_guard<std::mutex> lock(state.mutex); state.metrics.error=e.what(); }
+    if (task && (reason=="selected" || reason=="abstained") && state.cancelled())
+        reason=state.timed_out?"timeout":"cancelled";
     {
         std::lock_guard<std::mutex> lock(state.mutex);
         state.sample_memory(); state.metrics.ended=state.now(); state.metrics.reason=reason;
@@ -554,6 +618,13 @@ static int execute_request(const Config & config, const std::string & prompt, co
     state.wake.notify_all(); if(monitor.joinable()) monitor.join();
     state.terminal.finish();
     const auto final=state.metrics.snapshot(state.now());
+    if (task && inspect.empty()) {
+        if (reason!="selected" && reason!="abstained")
+            state.decision={{"schema_version",1},{"mode","candidate_score"},{"route","fast"},{"status",reason},
+                {"selected_candidate_id",nullptr},{"top_candidate_id",nullptr},{"scores",nullptr},{"error",state.metrics.error}};
+        state.decision["request_id"]=id;
+        state.decision["metrics"]=final;
+    }
     display(final,true);
     const auto profile_result=state.profile.dump();
     if (state.profile.enabled) {
@@ -565,12 +636,17 @@ static int execute_request(const Config & config, const std::string & prompt, co
     }
     if(!state.metrics.error.empty()) std::cerr << "[Wllm] " << state.metrics.error << '\n';
     record << json({{"event","end"},{"request_id",id},{"metrics",final},{"identity",state.identity},
+        {"decision",state.decision},
         {"profile",profile_result},
         {"token_times_s",state.metrics.token_times},{"token_ids",state.metrics.token_ids},
         {"load_start_s",state.metrics.load_start},{"load_end_s",state.metrics.load_end},
         {"prefill_start_s",state.metrics.prefill_start},{"prefill_end_s",state.metrics.prefill_end}}).dump() << '\n';
     record.flush();
     if(!record) { std::cerr << "Metric record write failed\n"; return 1; }
+    if (task && inspect.empty()) {
+        std::cout << state.decision.dump() << '\n' << std::flush;
+        if (!std::cout) { std::cerr << "Decision output write failed\n"; return 1; }
+    }
     return reason=="error"?1:reason=="cancelled"?130:reason=="timeout"?124:0;
 }
 
@@ -585,7 +661,7 @@ static int main_utf8(int argc,char ** argv) {
             if(++i==argc) throw std::runtime_error("--config needs a path");
             settings=json::parse(read_text(argv[i]));
         }
-        std::string prompt,system,inspect,cancel_file,logits_file,resources_file;
+        std::string prompt,system,inspect,cancel_file,logits_file,resources_file,candidates_file;
         bool prompt_set=false, quiet=false, interactive=false, profile=false, profile_ops=false, memory_diagnostic=false;
         const std::map<std::string,std::string> ints={{"--context","context"},{"--threads","threads"},{"--threads-batch","threads_batch"},{"--batch","batch"},{"--gpu-layers","gpu_layers"},{"--max-tokens","max_tokens"},{"--seed","seed"}};
         const std::map<std::string,std::string> bools={{"--thinking","thinking"},{"--persistent-threadpool","persistent_threadpool"},{"--prefill-last-only","prefill_last_only"},{"--cpu-weight-repacking","cpu_weight_repacking"}};
@@ -608,15 +684,22 @@ static int main_utf8(int argc,char ** argv) {
             else if(arg=="--logits-file") logits_file=v;
             else if(arg=="--cancel-file") cancel_file=v;
             else if(arg=="--resources") resources_file=v;
+            else if(arg=="--mode") settings["inference_mode"]=v;
+            else if(arg=="--candidates") candidates_file=v;
             else if(bools.count(arg)) { if(v!="on" && v!="off") throw std::runtime_error(arg + " must be on or off"); settings[bools.at(arg)]=v=="on"; }
             else if(ints.count(arg)) { const json n=json::parse(v); if(!n.is_number_integer()) throw std::runtime_error("Expected integer for " + arg); settings[ints.at(arg)]=n; }
             else if(arg=="--temperature" || arg=="--timeout") { const json n=json::parse(v); if(!n.is_number()) throw std::runtime_error("Expected number"); settings[arg=="--timeout"?"timeout_s":"temperature"]=n; }
             else throw std::runtime_error("Unknown argument: " + arg);
         }
         const auto config=Config::parse(settings);
+        std::optional<CandidateTask> task;
+        if (config.inference_mode=="candidate_score") {
+            if (candidates_file.empty()) throw std::runtime_error("candidate_score requires --candidates FILE");
+            task=CandidateTask::parse(json::parse(read_text(candidates_file)));
+        } else if (!candidates_file.empty()) throw std::runtime_error("--candidates requires --mode candidate_score");
         if (config.gpu_layers && !WLLM_VULKAN) throw std::runtime_error("Vulkan was not compiled into this executable; use the separate validation build");
         if (!resources_file.empty()) {
-            if (prompt_set || interactive || !inspect.empty() || !logits_file.empty() || profile || profile_ops || memory_diagnostic || !cancel_file.empty() || !system.empty())
+            if (task || prompt_set || interactive || !inspect.empty() || !logits_file.empty() || profile || profile_ops || memory_diagnostic || !cancel_file.empty() || !system.empty())
                 throw std::runtime_error("--resources is a standalone probe; do not combine with request/diagnostic options");
             State state; state.config = config;
             json report = {{"schema_version",1}, {"evidence", "resource probe only; no model execution"},
@@ -644,9 +727,9 @@ static int main_utf8(int argc,char ** argv) {
         int code=0;
         while (true) {
             if (interactive && (prompt.empty() || prompt=="/exit")) break;
-            code=execute_request(config,prompt,system,inspect,logits_file,cancel_file,quiet,profile,profile_ops,memory_diagnostic,interactive?&resident:nullptr);
+            code=execute_request(config,prompt,system,inspect,logits_file,cancel_file,quiet,profile,profile_ops,memory_diagnostic,interactive?&resident:nullptr,task?&*task:nullptr);
             if (!interactive || code!=0 || interrupted.load()) break;
-            std::cout << '\n' << std::flush;
+            if (!task) std::cout << '\n' << std::flush;
             std::cerr << "[Wllm] Weights retained; each prompt starts a fresh context. /exit or empty line releases the model.\nPrompt> ";
             if (!std::getline(std::cin,prompt)) break;
         }

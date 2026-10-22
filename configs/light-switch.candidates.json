@@ -1,0 +1,9 @@
+{
+  "candidates": [
+    {"id": "turn_on", "label": "A", "description": "打开灯 / turn the light on"},
+    {"id": "turn_off", "label": "B", "description": "关闭灯 / turn the light off"},
+    {"id": "query", "label": "C", "description": "查询灯的状态 / query the light status"},
+    {"id": "unknown", "label": "D", "description": "信息不足或不属于其他选项 / insufficient information or none of the other options"}
+  ],
+  "unknown_id": "unknown"
+}

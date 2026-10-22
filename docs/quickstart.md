@@ -107,6 +107,10 @@ py -3.11 scripts/prepare_model.py
 
 ## 当前范围
 
+候选打分快速决策模式（System 1 分支）的 CPU 显式首版已实现：`./scripts/run.ps1 -Mode candidate_score -CandidatesFile configs/light-switch.candidates.json -Prompt '请开灯'`。stdout 返回一行 JSON 决策，指标与说明走 stderr；`selected_candidate_id` 为选择结果，unknown 获胜时状态为 `abstained` 且该字段为 null。可以加 `-Interactive` 在相同候选下连续处理独立问题。普通生成仍默认开启思考；候选分支记录有效非思考、无采样，不改默认配置。
+
+候选文件要求至少两个唯一 ID/普通单 token 标签，并提供 `unknown_id` 或显式 `exhaustive: true`；详细协议、边界和复现见[模式说明](candidate-score-mode.md)。首版不支持 GPU、未通过验收的 CPU 重排、多 token 标签或自动思考回退。`--logits-file` 仍是独立诊断导出，不是启用此模式的参数；广泛任务质量与正式性能另行验收。
+
 默认每次进程处理一个文本请求；`-Interactive` 可在同一进程处理多个独立请求。当前不含 GUI、HTTP 服务、带历史的多轮对话、视觉或推测解码。模型加载使用内存映射，默认关闭额外 CPU 权重重排缓冲；该研究开关未通过本机数值门槛。空闲 RAM 较少时仍可能发生换页。资源检查是保守估计，不是运行内存的精确预报。错误时不会结束其他应用或修改 Ollama 配置。
 
 当前注意力 KV 为 F16，循环状态为 F32。现有资源检查采用权重文件大小、注意力 KV 估算及固定工作区预留，尚不能精确预测其他后端的编译峰值、权重副本或推测状态开销。核显共享显存属于系统 RAM；可用内存和提交额度需在实际运行时重新检查。后续资源账本与实验准入设计不代表当前已实现自动资源调度。

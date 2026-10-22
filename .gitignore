@@ -17,5 +17,7 @@ __pycache__/
 !/reports/vulkan-validation.json
 !/reports/context16k-validation.md
 !/reports/context16k-validation.json
+!/reports/candidate-score-validation.md
+!/reports/candidate-score-validation.json
 /configs/local.json
 *.user

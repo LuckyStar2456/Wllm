@@ -1,0 +1,233 @@
+{
+  "schema_version": 1,
+  "date": "2026-10-22",
+  "status": "bounded_cpu_acceptance_passed",
+  "base_commit": "2ac9eb4",
+  "llama_commit": "f2918cabbffe8abf8e2a90c1c089085fa116c2cf",
+  "exe_sha256": "5ab1d02b1dbaabb0ff8c36d50b86670ce91e3849aeaff0c9b3da6eaabe6fd90d",
+  "context": 16384,
+  "weight_baseline": "existing Qwen3.5 Q4_K_M; unchanged",
+  "cpu_build": "AVX2",
+  "cache_k": "f16",
+  "cache_v": "f16",
+  "recurrent_state": "f32",
+  "checks": {
+    "native": 58,
+    "candidate_model_tests": 7,
+    "default_generation_integration_tests": 8,
+    "resource_calibration_and_summary_tests": 19
+  },
+  "raw_evidence_folder": "reports\\candidate-score-1792665455328303500",
+  "label_token_ids": [
+    32,
+    33,
+    34,
+    35
+  ],
+  "vocabulary_logits_count": 248320,
+  "nonthinking_reference_full_logits_byte_equal": true,
+  "sampling_transform_changes_leave_scores_equal": true,
+  "prefill_cancel": {
+    "exit_code": 130,
+    "status": "cancelled",
+    "output_tokens": 0
+  },
+  "cases": {
+    "inspect": {
+      "exit_code": 0,
+      "record": "reports\\candidate-score-1792665455328303500\\inspect.jsonl",
+      "end_reasons": [
+        "inspected"
+      ],
+      "output_tokens": [
+        0
+      ]
+    },
+    "scores": {
+      "exit_code": 0,
+      "record": "reports\\candidate-score-1792665455328303500\\scores.jsonl",
+      "end_reasons": [
+        "selected"
+      ],
+      "output_tokens": [
+        0
+      ],
+      "decisions": [
+        {
+          "status": "selected",
+          "selected_candidate_id": "turn_on",
+          "top_candidate_id": "turn_on",
+          "logit_margin": 6.948984146118164,
+          "tie_for_first": false
+        }
+      ]
+    },
+    "reference": {
+      "exit_code": 0,
+      "record": "reports\\candidate-score-1792665455328303500\\reference.jsonl",
+      "end_reasons": [
+        "max_tokens"
+      ],
+      "output_tokens": [
+        1
+      ]
+    },
+    "sampling-ignored": {
+      "exit_code": 0,
+      "record": "reports\\candidate-score-1792665455328303500\\sampling-ignored.jsonl",
+      "end_reasons": [
+        "selected"
+      ],
+      "output_tokens": [
+        0
+      ],
+      "decisions": [
+        {
+          "status": "selected",
+          "selected_candidate_id": "turn_on",
+          "top_candidate_id": "turn_on",
+          "logit_margin": 6.948984146118164,
+          "tie_for_first": false
+        }
+      ]
+    },
+    "multi-token": {
+      "exit_code": 1,
+      "record": "reports\\candidate-score-1792665455328303500\\multi-token.jsonl",
+      "end_reasons": [
+        "error"
+      ],
+      "output_tokens": [
+        0
+      ],
+      "decisions": [
+        {
+          "status": "error",
+          "selected_candidate_id": null,
+          "top_candidate_id": null,
+          "logit_margin": null,
+          "tie_for_first": null
+        }
+      ]
+    },
+    "special-label": {
+      "exit_code": 1,
+      "record": "reports\\candidate-score-1792665455328303500\\special-label.jsonl",
+      "end_reasons": [
+        "error"
+      ],
+      "output_tokens": [
+        0
+      ],
+      "decisions": [
+        {
+          "status": "error",
+          "selected_candidate_id": null,
+          "top_candidate_id": null,
+          "logit_margin": null,
+          "tie_for_first": null
+        }
+      ]
+    },
+    "resident": {
+      "exit_code": 0,
+      "record": "reports\\candidate-score-1792665455328303500\\resident.jsonl",
+      "end_reasons": [
+        "selected",
+        "selected",
+        "selected",
+        "abstained"
+      ],
+      "output_tokens": [
+        0,
+        0,
+        0,
+        0
+      ],
+      "decisions": [
+        {
+          "status": "selected",
+          "selected_candidate_id": "turn_on",
+          "top_candidate_id": "turn_on",
+          "logit_margin": 6.948984146118164,
+          "tie_for_first": false
+        },
+        {
+          "status": "selected",
+          "selected_candidate_id": "turn_off",
+          "top_candidate_id": "turn_off",
+          "logit_margin": 7.824472427368164,
+          "tie_for_first": false
+        },
+        {
+          "status": "selected",
+          "selected_candidate_id": "turn_on",
+          "top_candidate_id": "turn_on",
+          "logit_margin": 6.948984146118164,
+          "tie_for_first": false
+        },
+        {
+          "status": "abstained",
+          "selected_candidate_id": null,
+          "top_candidate_id": "unknown",
+          "logit_margin": 3.5576248168945312,
+          "tie_for_first": false
+        }
+      ]
+    },
+    "timeout": {
+      "exit_code": 124,
+      "record": "reports\\candidate-score-1792665455328303500\\timeout.jsonl",
+      "end_reasons": [
+        "timeout"
+      ],
+      "output_tokens": [
+        0
+      ],
+      "decisions": [
+        {
+          "status": "timeout",
+          "selected_candidate_id": null,
+          "top_candidate_id": null,
+          "logit_margin": null,
+          "tie_for_first": null
+        }
+      ]
+    },
+    "label-remap": {
+      "exit_code": 0,
+      "record": "reports\\candidate-score-1792665455328303500\\label-remap.jsonl",
+      "end_reasons": [
+        "selected"
+      ],
+      "output_tokens": [
+        0
+      ],
+      "decisions": [
+        {
+          "status": "selected",
+          "selected_candidate_id": "turn_on",
+          "top_candidate_id": "turn_on",
+          "logit_margin": 4.535346984863281,
+          "tie_for_first": false
+        }
+      ]
+    }
+  },
+  "performance_validation": "not performed; functional samples, uncontrolled background/cache conditions and diagnostic runs",
+  "quality_scope": "light-switch smoke cases, unknown category, label/order remapping; not a general dataset or equivalence to thinking",
+  "remaining": [
+    "calibrated gating",
+    "thinking fallback",
+    "multi-token option scoring",
+    "broad held-out quality suite",
+    "controlled repeated performance"
+  ],
+  "default_generation_regression_source": "reports/acceptance/results.json",
+  "powershell_wrapper_smoke": {
+    "status": "selected",
+    "selected_candidate_id": "turn_on",
+    "output_tokens": 0,
+    "stdout": "reports/candidate-score-wrapper.stdout.txt"
+  }
+}

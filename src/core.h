@@ -13,6 +13,7 @@ using json = nlohmann::ordered_json;
 
 struct Config {
     std::string model, record = "reports/runs.jsonl";
+    std::string inference_mode = "generate";
     int context = 16384, threads = 4, threads_batch = 0, batch = 128, max_tokens = -1;
     bool persistent_threadpool = false, prefill_last_only = false;
     bool cpu_weight_repacking = false;
@@ -26,7 +27,7 @@ struct Config {
 
     static Config parse(const json & j) {
         Config c;
-        const auto known = json::parse(R"(["model","record","context","threads","threads_batch","batch","persistent_threadpool","prefill_last_only","cpu_weight_repacking","gpu_layers","max_tokens","temperature","top_p","min_p","repeat_penalty","presence_penalty","frequency_penalty","top_k","repeat_last_n","refresh_ms","seed","thinking","timeout_s","reserve_mib"])");
+        const auto known = json::parse(R"(["model","record","inference_mode","context","threads","threads_batch","batch","persistent_threadpool","prefill_last_only","cpu_weight_repacking","gpu_layers","max_tokens","temperature","top_p","min_p","repeat_penalty","presence_penalty","frequency_penalty","top_k","repeat_last_n","refresh_ms","seed","thinking","timeout_s","reserve_mib"])");
         if (!j.is_object()) throw std::runtime_error("Configuration must be an object");
         for (const auto * key : {"context","threads","threads_batch","batch","gpu_layers","max_tokens","top_k","repeat_last_n","refresh_ms","seed"}) {
             if (j.contains(key) && !j.at(key).is_number_integer()) throw std::runtime_error(std::string("Expected integer: ") + key);
@@ -41,7 +42,7 @@ struct Config {
                 throw std::runtime_error("Unknown config key: " + it.key());
         }
 #define READ_FIELD(k) if (j.contains(#k)) j.at(#k).get_to(c.k)
-        READ_FIELD(model); READ_FIELD(record); READ_FIELD(context); READ_FIELD(threads);
+        READ_FIELD(model); READ_FIELD(record); READ_FIELD(inference_mode); READ_FIELD(context); READ_FIELD(threads);
         READ_FIELD(threads_batch); READ_FIELD(persistent_threadpool); READ_FIELD(prefill_last_only);
         READ_FIELD(cpu_weight_repacking);
         READ_FIELD(gpu_layers);
@@ -55,6 +56,9 @@ struct Config {
         return c;
     }
     void validate() const {
+        if (inference_mode!="generate" && inference_mode!="candidate_score") throw std::runtime_error("inference_mode must be generate or candidate_score");
+        if (inference_mode=="candidate_score" && (gpu_layers || cpu_weight_repacking))
+            throw std::runtime_error("candidate_score currently requires the validated CPU path with repacking off");
         if (context < 512 || context > 262144) throw std::runtime_error("context must be 512..262144 (default 16384); no automatic shrinking");
         if (threads < 1 || threads > 256 || threads_batch < 0 || threads_batch > 256 || batch < 1 || batch > context) throw std::runtime_error("Invalid threads or batch");
         if (max_tokens != -1 && max_tokens < 1) throw std::runtime_error("max_tokens must be -1 or positive");
@@ -69,7 +73,9 @@ struct Config {
     }
     int effective_threads_batch() const { return threads_batch == 0 ? threads : threads_batch; }
     json dump() const {
-        return {{"model", model}, {"context", context}, {"threads", threads}, {"batch", batch},
+        return {{"model", model}, {"inference_mode",inference_mode},
+            {"effective_thinking",inference_mode=="generate" && thinking},{"sampling_applied",inference_mode=="generate"},
+            {"context", context}, {"threads", threads}, {"batch", batch},
             {"threads_batch", effective_threads_batch()}, {"persistent_threadpool", persistent_threadpool},
             {"prefill_last_only", prefill_last_only},
             {"max_tokens", max_tokens}, {"temperature", temperature}, {"top_k", top_k}, {"top_p", top_p},
@@ -85,6 +91,7 @@ struct Config {
 // Times are monotonic seconds relative to the start of this request.
 struct Metrics {
     std::string stage = "starting", reason, error;
+    double decision_start = -1, decision_ready = -1;
     double load_start = -1, load_end = -1, prefill_start = -1, prefill_end = -1, ended = -1;
     int input_total = 0, input_done = 0, prefill_batches = 0, prefill_logits_batches = 0;
     std::vector<double> token_times;
@@ -123,6 +130,8 @@ struct Metrics {
             {"decode_window_tps", num(window_tps(now))},
             {"decode_window_s", token_times.empty() ? 0.0 : std::min(2.0, now - token_times.front())},
             {"generation_s", token_times.empty() ? json(nullptr) : json(now - token_times.front())},
+            {"decision_s",decision_ready<0?json(nullptr):json(decision_ready)},
+            {"candidate_selection_s",decision_ready<0?json(nullptr):json(decision_ready-decision_start)},
             {"working_set_bytes", memory_available ? json(working_set) : json(nullptr)},
             {"private_bytes", memory_available ? json(private_bytes) : json(nullptr)},
             {"system_available_bytes", memory_available ? json(available) : json(nullptr)},
@@ -137,7 +146,9 @@ struct Metrics {
     }
 };
 
-inline void check_context(int input, int context) {
-    if (input >= context) throw std::runtime_error("Input leaves no generation room in configured context; change --context explicitly or shorten input");
+inline void check_context(int input, int context, bool generation_room = true) {
+    if (input > context || (generation_room && input == context))
+        throw std::runtime_error(generation_room ? "Input leaves no generation room in configured context; change --context explicitly or shorten input" :
+            "Candidate input exceeds configured context; change --context explicitly or shorten input");
 }
 } // namespace wllm

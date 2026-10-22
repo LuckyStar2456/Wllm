@@ -2,6 +2,8 @@ param(
     [string]$Prompt,
     [string]$PromptFile,
     [switch]$Interactive,
+    [ValidateSet('generate','candidate_score')][string]$Mode,
+    [string]$CandidatesFile,
     [ValidateRange(512,262144)][int]$Context,
     [int]$MaxTokens,
     [ValidateRange(1,256)][int]$Threads,
@@ -21,6 +23,8 @@ $exe = Join-Path $projectRoot 'build/bin/Release/wllm.exe'
 if (-not (Test-Path -LiteralPath $exe)) { throw 'Run scripts/build.ps1 first' }
 $params = @('--config', $Config)
 if ($Interactive) { $params += '--interactive' }
+if ($PSBoundParameters.ContainsKey('Mode')) { $params += @('--mode', $Mode) }
+if ($CandidatesFile) { $params += @('--candidates', $CandidatesFile) }
 if ($ProfileTimings) { $params += '--profile' }
 if ($ProfileOps) { $params += '--profile-ops' }
 if ($PSBoundParameters.ContainsKey('Context')) { $params += @('--context', $Context) }
