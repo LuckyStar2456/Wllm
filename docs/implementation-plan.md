@@ -1,6 +1,6 @@
 # Wllm 实施与评测路线
 
-更新：2026-10-21。2026-10-17 曾按普通电脑、普通 SSD、无 CUDA、固定模型保真约束修订计划和设计，只新增源码/文件核实与研究决策，不改实现、不新增推理运行或性能验收结论。E0 本机核实、E1 原型已完成。按用户授权，E2 首批已实现模型加载复用、CPU 控制与对照工具，见 [E2 报告](../reports/e2-validation.md)。完整真实用途基线、其他后端和 E3–E5 仍待推进；首版记录见[原型报告](../reports/prototype-validation.md)。
+更新：2026-10-22（补充 DeepInfer 研究映射，未新增实现或运行验收）。2026-10-17 曾按普通电脑、普通 SSD、无 CUDA、固定模型保真约束修订计划和设计，只新增源码/文件核实与研究决策，不改实现、不新增推理运行或性能验收结论。E0 本机核实、E1 原型已完成。按用户授权，E2 首批已实现模型加载复用、CPU 控制与对照工具，见 [E2 报告](../reports/e2-validation.md)。完整真实用途基线、其他后端和 E3–E5 仍待推进；首版记录见[原型报告](../reports/prototype-validation.md)。
 
 最终目标已明确为：面向不同硬件配置，包括弱硬件，按实际资源与用户需求匹配推理策略并在约束内寻优。本机专项优化提供首个验证场景；E2–E5 的职责分级保留，最小资源/能力检查提前支撑近期实验，完整硬件自适应系统仍在 E5。目标定义及不可行情况处理见[项目目标](project-goals.md)。
 
@@ -11,6 +11,8 @@ E2 后续新增阶段/算子诊断、长输入与长输出筛选、长输入单�
 2026-10-21 补充 GitHub 参考研究：新增 R33–R44，包括此前遗漏的 FreeToken，以及 QuestWend、FastLLM、llamafile、OpenVINO GenAI、Lemonade、flash-linear-attention、FlashInfer、ssdmoe、FlexLLMGen、MNN、KleidiAI；具体机制、固定 SHA、平台/精度限制和最小实验见[参考研究第 11 节](engine-references.md#11-github-补充研究2026-10-21)。这是资料和局部源码核对，没有新增安装、模型、运行依赖或性能结果；原候选未全部实时复核。
 
 新增参考映射到既有任务：CPU 矩阵核参考 FastLLM/llamafile；后端能力参考 OpenVINO GenAI/Lemonade/QuestWend；混合状态和循环层参考 FreeToken/FLA；MTP 参考 QuestWend/FastLLM；MoE 分层与预算参考 FreeToken/QuestWend/FastLLM/ssdmoe；历史 Dense 分层参考已归档 FlexLLMGen；跨硬件扩展参考 MNN/KleidiAI。FreeToken 的带宽分流不能照搬到共享内存 Iris Xe，QuestWend 的常驻限定路由/剪枝不进入保真基线。保留现有 8.5 执行顺序和全部数值、质量、资源验收条件，不因参考池扩大而批量实现或更换默认模型。
+
+2026-10-22 补充 DeepSeek **DeepInfer（R45）**，固定快照、官方来源、平台/模型限制及任务映射见[参考研究第 12 节](engine-references.md#12-deepinfer-补充研究2026-10-22)。近期借鉴固定 token 轨迹回放和基准隔离方法，对应 E2-01/04/06，继续定位当前 CPU/Vulkan 输出投影差异；采样分布验证、动态推测预算和异步调度分别作为 E3-04/06、E3-02 的后续参考。上游近似 SWA 重放、低精度状态和集群吞吐不自动进入当前保真基线；保持 Q4_K_M、16K、F16 KV/F32 循环状态及既定数值门槛。仅补充研究文档，不安装 DeepInfer、不新增模型或改变当前 GPU 候选关闭状态。
 
 2026-10-21 实现进展：E4-01/E5-01 的本机最小资源子集已有原生探测、循环状态估算、Vulkan UUID/DXGI LUID 归并与评测准入；E2-01 按用户确认准备聊天、代码、长文三类任务并核对实际 token 长度。仍未完成带宽/IOPS、峰值校准、真实用途质量及重复性能基线；本机资源快照未满足保守性能预算，正式跑分在预热前被拒绝。CPU 数值回归与资源工具验证见[本轮报告](../reports/resource-validation.md)。E2-04 GPU 对照及完整 E3–E5 继续待实施。
 

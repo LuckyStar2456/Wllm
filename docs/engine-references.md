@@ -1,6 +1,6 @@
 # 推理优化研究：统一候选比较
 
-初次检索与核对日期：**2026-10-09**；**2026-10-10** 补充 BitNet 与 T-MAC；**2026-10-15** 复核部分官方资料并映射细化任务；**2026-10-17** 核实本地 MTP 张量、状态精度及固定依赖的 OpenVINO 说明，追加 Strata SSD 路径与 I/O 研究决策；**2026-10-21** 补入遗漏的 FreeToken，并通过 GitHub 搜索、上游文档及部分源码核对新增 R33–R44，见第 11 节。其他候选未因此全部重新核对。对象：Wllm 的 Windows / i5-1135G7 / 16GB / Iris Xe / Qwen3.5 Q4_K_M 专项优化，以及后续更大参数模型。
+初次检索与核对日期：**2026-10-09**；**2026-10-10** 补充 BitNet 与 T-MAC；**2026-10-15** 复核部分官方资料并映射细化任务；**2026-10-17** 核实本地 MTP 张量、状态精度及固定依赖的 OpenVINO 说明，追加 Strata SSD 路径与 I/O 研究决策；**2026-10-21** 补入遗漏的 FreeToken，并通过 GitHub 搜索、上游文档及部分源码核对新增 R33–R44，见第 11 节；**2026-10-22** 补入 DeepSeek DeepInfer（R45），固定源码与适配边界见第 12 节。其他候选未因此全部重新核对。对象：Wllm 的 Windows / i5-1135G7 / 16GB / Iris Xe / Qwen3.5 Q4_K_M 专项优化，以及后续更大参数模型；当前默认上下文为 16K，历史实验保留原配置。
 
 研究按可能解决的瓶颈组织。用户提到的名称仅是检索线索，所有可能有用的项目、论文和技术机制进入同一比较体系；不因被点名、热度高或发布时间新而获得优先地位。并列研究采用统一问题、证据要求和比较方法，实施顺序再由适用性和本机测量决定。
 
@@ -138,9 +138,9 @@ Strata 与 Colibri 的低比特状态、剪枝模型或近似专家省略等选�
 
 ## 7. 从并列筛选到实验
 
-第 3–6 节保留原有 R01–R32，第 11 节补充 R33–R44，共 44 项项目/机制参考，包含已归档的历史机制参照，并非 44 个可执行候选或都要安装的引擎，也未完成同深度源码审计。未知信息统一记录为未知，不用虚构分数给出排名。
+第 3–6 节保留原有 R01–R32，第 11 节补充 R33–R44，第 12 节补充 R45，共 45 项项目/机制参考，包含已归档的历史机制参照，并非 45 个可执行候选或都要安装的引擎，也未完成同深度源码审计。未知信息统一记录为未知，不用虚构分数给出排名。
 
-每个候选进入下一阶段须满足：对应已测瓶颈、默认语义不变或明确独立为用户可选配置、硬件/模型路径可验证、成本可控制。若某候选需要当前没有的架构/硬件，保留其适用前提，不因项目名称直接淘汰或提前选中。下表保留原实验分组，新增参考的任务归属见第 11.4 节。
+每个候选进入下一阶段须满足：对应已测瓶颈、默认语义不变或明确独立为用户可选配置、硬件/模型路径可验证、成本可控制。若某候选需要当前没有的架构/硬件，保留其适用前提，不因项目名称直接淘汰或提前选中。下表保留原实验分组，新增参考的任务归属见第 11.4 节和第 12.3 节。
 
 | 实验组 | 统一比较问题 | 候选覆盖 | 所需证据 |
 |---|---|---|---|
@@ -276,3 +276,43 @@ SHA 是本次读取默认分支时的快照，不新增 Wllm 依赖锁定。API 
 [ft-cache]: https://github.com/FlashML-org/FreeToken/blob/cc4aa085b6eaeda01c0441fb3ecb9cc843b3e465/python/freetoken/moe/offload_cache.py
 [ft-hybrid]: https://github.com/FlashML-org/FreeToken/blob/cc4aa085b6eaeda01c0441fb3ecb9cc843b3e465/python/freetoken/kvcache/hybrid_radix_cache.py
 [ft-gguf]: https://github.com/FlashML-org/FreeToken/blob/cc4aa085b6eaeda01c0441fb3ecb9cc843b3e465/python/freetoken/models/gguf/config.py
+
+## 12. DeepInfer 补充研究（2026-10-22）
+
+**R45 [DeepSeek DeepInfer][di-readme]**，与 DeepInfra 云推理平台区分。研究快照为 `9bd9cf243fc53ef9afbf8f04d391d989117d6ab9`（提交时间 2026-10-21 04:55:43 UTC），通过官方 GitHub API、README、部署问答、基准说明及部分测试/执行源码核对。根目录 [LICENSE][di-license] 为 Apache-2.0；实际复用仍须逐文件核对第三方来源。这是参考快照，不新增 Wllm 依赖锁，也不表示已经移植、安装或在本机运行 DeepInfer。
+
+### 12.1 项目范围与本机适用性
+
+该快照 README 列出 DeepSeek-V4.1-Flash、NVIDIA SM100 GPU 与 Huawei Ascend 950 NPU；环境要求 Linux、Python 3.12、GCC 13 及对应 CUDA 13 / CANN 9.2。没有列出当前 Windows / Iris Xe / Qwen3.5 GGUF 路径，不能作为 Wllm 可直接替换的本机后端。公开版本提供离线推理；完整 KV 缓存系统、VE/Prefill/Decode 分离部署和 DP 副本间负载均衡列为未包含组件，不能把生产系统说明当作全部已公开实现。[项目范围][di-readme]
+
+### 12.2 可借鉴机制与最小实验
+
+| 机制 / 已核对依据 | 对 Wllm 的参考价值与最小实验 | 前提与边界 |
+|---|---|---|
+| 固定 token 轨迹与批次不变性：[test_batch_invariant.py][di-batch] 先批量生成，再用 `golden_token_ids` 单独重放，比较 token、logprobs 和 top-logprobs | 近期优先借鉴诊断方法：固定相同 token 输入，逐步比较 CPU/Vulkan logits；针对已发现的输出投影差异捕获相同输入、临时激活与归约结果，定位首处分歧 | 上游批次不变性不等于跨 CPU/GPU 逐位一致。固定种子、相同短文本或强制相同 token 都不能代替数值通过；仍用既定阈值，完整轨迹回放尚未在 Wllm 实现 |
+| 无干扰基准：[examples/README.md][di-bench] 分离 prefill/decode、日志和 profiler，并指出 profiler 退出后的残余影响 | E2 基准增加受控测量段，与正常记录模式分开；完整用户请求仍计入实际日志/展示开销，保持加载、TTFT、pp/tg 和总耗时分别报告 | 其 decode 吞吐公式按每步全部草稿接受计算，不等于实际接受输出吞吐。Wllm 仍按实际接受 token 和整次净耗时验收；不套用上游倍数、并发度或热缓存口径 |
+| 采样分布验证：[test_sampler.py][di-sampler-test] 用随机化 PIT 与 KS 检验检查采样分布 | 采样器/MTP 修改时，除 logits 和固定轨迹外增加分布测试；覆盖温度、top-p、接受/拒绝与失败样本 | 属于统计证据，不能替代逐算子数值、任务质量和完整回滚检查；测试规模与耗时按本机预算另定，不直接照搬上游夜间测试规模 |
+| 置信度驱动推测验证：[schedule_mtp_varlen.py][di-varlen] 计算累计置信度，按总预算选择验证长度；[部署问答][di-qa] 结合硬件吞吐曲线说明策略 | 后续 E3-04 在固定主目标下，依据本机草稿、验证、同步与状态成本选择长度，并测试负收益禁用条件 | 当前 CUDA/TileLang 内核不能直接用于 Iris Xe；需要匹配的草稿/置信度来源及完整 F16 KV/F32 循环状态回滚，不能假定现有 Qwen3.5 MTP 文件自动具备 DSpark 能力 |
+| CPU/GPU 异步调度：[llm_engine.py][di-engine] 与[部署问答][di-qa] 组织调度、执行、采样和后处理重叠 | E3-02 在剖析证明 host 调度/同步造成空闲后，再做单项流水实验，计入事件、复制、线程和缓冲成本 | 数据中心并发吞吐收益不自动适用于单用户共享内存设备；只在前向与取消/释放正确后比较，不能隐藏 CPU 工作或必要同步 |
+
+### 12.3 采用边界与既有任务映射
+
+[部署问答][di-qa] 明确说明 SWA 有界重放重建的是近似状态，且其低精度 KV/专家格式不同于当前基线。这些机制不直接进入 Wllm 的 Q4_K_M、16K、F16 KV/F32 循环状态保真实验；完整状态恢复仍须按 Qwen3.5 的实际方程与历史依赖验证。生产 KV 存储/负载均衡未完整公开，也不能作为现成的本地 RAM/SSD 缓存实现。
+
+| 既有任务 | R45 的映射 | 验收次序 |
+|---|---|---|
+| E2-01 / E2-06 基线与回归；E2-04 GPU 正确性 | 固定轨迹、概率/数值比较、低干扰计量与口径核实 | 近期先补诊断并定位输出投影差异；数值/质量与资源通过后再比较性能，不放宽阈值或退回 4K |
+| E3-02 执行计划与同步 | 异步调度、事件依赖、采样/后处理重叠 | 有热点证据才进入单项实验，保留同步参照及取消/错误释放检查 |
+| E3-04 / E3-06 推测与组合 | 动态验证预算、采样分布测试、本机成本驱动禁用 | 先验证匹配草稿、完整状态与采样，再测实际接受输出的净收益；不将其列为全部优化的前置 |
+| E3-03 / E4-07 状态复用与分层 | 缓存命中、重算及状态依赖的分析方法 | 只研究可保持当前状态语义的部分；近似 SWA 重放不自动采用，缓存命中不计为新计算吞吐 |
+
+R45 补充方法与研究线索，不提升当前 GPU 候选状态。当前 16K CPU 容量验证与 GPU 数值失败以[本机报告](../reports/context16k-validation.md)为准；本次文档补充不构成 DeepInfer 本机复现、数值修复或性能验收。
+
+[di-readme]: https://github.com/deepseek-ai/DeepInfer/blob/9bd9cf243fc53ef9afbf8f04d391d989117d6ab9/README.md
+[di-license]: https://github.com/deepseek-ai/DeepInfer/blob/9bd9cf243fc53ef9afbf8f04d391d989117d6ab9/LICENSE
+[di-batch]: https://github.com/deepseek-ai/DeepInfer/blob/9bd9cf243fc53ef9afbf8f04d391d989117d6ab9/tests/models/test_batch_invariant.py
+[di-bench]: https://github.com/deepseek-ai/DeepInfer/blob/9bd9cf243fc53ef9afbf8f04d391d989117d6ab9/examples/README.md
+[di-sampler-test]: https://github.com/deepseek-ai/DeepInfer/blob/9bd9cf243fc53ef9afbf8f04d391d989117d6ab9/tests/models/test_sampler.py
+[di-varlen]: https://github.com/deepseek-ai/DeepInfer/blob/9bd9cf243fc53ef9afbf8f04d391d989117d6ab9/deepinfer/model_executor/layers/tilelang_ops/cuda/schedule_mtp_varlen.py
+[di-engine]: https://github.com/deepseek-ai/DeepInfer/blob/9bd9cf243fc53ef9afbf8f04d391d989117d6ab9/deepinfer/engine/llm_engine.py
+[di-qa]: https://github.com/deepseek-ai/DeepInfer/blob/9bd9cf243fc53ef9afbf8f04d391d989117d6ab9/doc/inference_deployment_qa.md
