@@ -67,6 +67,7 @@ Wllm 是独立的本地模型推理优化项目，正式名称为 **Wllm**。
 - [架构设计](docs/architecture.md)：执行、状态、资源、配置与扩展边界。
 - [System One 文本请求](docs/system-one-protocol.md)：state/questions/answers 格式、题型、使用入口与本地执行边界。
 - [候选打分快速决策模式](docs/candidate-score-mode.md)：CPU 显式首版运行、输入输出与计量；独立质量边界及后续回退设计。
+- [Reflex 参考研究](docs/reflex-research.md)：LLM2Jev、SemIf 等固定版本对照，后续策略、完整状态复用、调度、校准及最小验收；本轮仅文档研究。
 - [实施与评测路线](docs/implementation-plan.md)：原型验收、计量口径，以及 E2–E5 逐项任务、参考项目/机制、前置条件与验收；含大模型和弱硬件策略。
 - [原型使用说明](docs/quickstart.md)：构建、模型适配、运行、上下文与指标。
 - [CPU 基础优化](docs/cpu-optimization.md)：分阶段线程、执行开关、可重复的对照与正确性检查。

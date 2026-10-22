@@ -85,6 +85,8 @@ JSON 请求内的错误会返回结构化响应；请求文件无法读取、无
 
 ## 证据与后续
 
+2026-10-22 补充与 LLM2Jev、SemIf、snapjudge 等的[协议和算法对照](reflex-research.md#4-概率confidence-与校准的兼容层次)。结构兼容、概率定义、confidence、usage 和质量分别核对：当前 Wllm 的 score confidence 保留有序等级公式，不跟随其他项目的同名字段改算法；usage 保留当前完成 prefill 批次累计口径，未来缓存研究另列逻辑/计算/复用输入。本轮不新增协议字段、配置开关或策略。
+
 已实现：上述文本协议、内部标签、三种答案映射、独立请求状态、统一超时与结构化错误。默认仍为 generate；旧 `candidate_score + 候选文件 + prompt` 入口继续保留，见[底层模式设计](candidate-score-mode.md)。Q4_K_M、16K、F16 KV/F32 循环状态不变。
 
 研究候选：共享 state 前缀复用、批处理/并行题目、任务校准与完整思考回退、HTTP 服务、视觉支持。本地最多 255 选项是解析/映射能力边界，不表示最大规模任务的质量和延迟均已验收。

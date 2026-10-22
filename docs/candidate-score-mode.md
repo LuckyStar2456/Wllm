@@ -107,3 +107,13 @@ py -3.11 -B tests/test_candidate_score.py
 ```
 
 原生命令也可使用 `build/bin/Release/wllm.exe --config configs/local.json --mode candidate_score --candidates configs/light-switch.candidates.json --prompt "Turn the light on"`。结果为请求结束后的 JSON，`metrics.decision_s` 是从请求开始到决策就绪的时间，`candidate_selection_s` 只含取分/选择阶段，`elapsed_s` 还包含请求清理；不要将三个口径混用。请求记录保留原 `thinking` 设置并另列 `effective_thinking: false`、`sampling_applied: false`，普通生成未修改。正式计时不要启用 `--inspect`、`--logits-file`、剖析或内存诊断。
+
+## 7. 参考项目补充设计（2026-10-22）
+
+本模式属于已有的 logits 决策技术路线；参考 LLM2Jev、SemIf、snapjudge 和 llamacpp-jev 的固定版本，完整来源、成本与实验矩阵见[参考研究](reflex-research.md)。它们不作为新增依赖，也不另立 Reflex 项目。
+
+保留当前同题直接单标签打分为参照，逐候选 yes/no 和多 token 选项树作为独立研究策略。LLM2Jev 的逐候选分数汇总不同于当前 softmax；不同策略、模板与 confidence 定义分别记账，不更改已发布的标签映射或协议分数。
+
+近期先补代表性标注任务与测量契约，再做无缓存策略对照及完整混合状态接口核查。跨题共享 state 需要实际 token 公共前缀；当前每题 instructions 位于 system，不能假定同一 state 自动可复用。先完成 F16 KV/F32 循环状态快照和串行隔离验证，再考虑布局、分阶段调度或并行；短输入、少候选和热缓存场景必须测负收益。
+
+校准与门控按来源组隔离数据集，保留原始分数；准确率、NLL/Brier/ECE、覆盖-风险和全部回退成本共同评估。HTTP 与原生决策模型适配优先检查共享上游设施。上述候选均未实现，本轮没有新构建、推理或性能结果，不改变默认 generate 或现有 CLI。

@@ -4,6 +4,8 @@
 
 研究按可能解决的瓶颈组织。用户提到的名称仅是检索线索，所有可能有用的项目、论文和技术机制进入同一比较体系；不因被点名、热度高或发布时间新而获得优先地位。并列研究采用统一问题、证据要求和比较方法，实施顺序再由适用性和本机测量决定。
 
+2026-10-22 同日新增 Reflex 参考 R46–R51：LLM2Jev、SemIf、snapjudge、llamacpp-jev、Kev 和 jeff，见[第 13 节](#13-reflex-参考项目2026-10-22)。比较、状态/调度设计与最小验收统一放在[Reflex 参考研究](reflex-research.md)；本轮只有文档和部分源码核对，没有外部工程复现或实现变更。
+
 2026-10-09–15 为官方资料级筛选：读取仓库、技术文档、作者说明和论文摘要/版本记录，部分集成状态通过 API 核对。2026-10-17 另作本地源码、适配报告及 GGUF 元数据只读核查；没有完整源码审计、安装、权重下载或新增推理复现。以下“适用性”和“最小实验”是工程判断，未测收益一律未知。
 
 证据分开标注：**已验证结果**链接 Wllm 历史运行报告并保留负载/样本边界；**研究候选**注明源码事实、文件事实或上游说明及未完成条件；**性能预期**仅为有假设的成本估算或实验前目标，不能写成预计可兑现的倍数。下表的上游支持和本地元数据核实都不代表 Wllm 已运行或已提速。
@@ -316,3 +318,20 @@ R45 补充方法与研究线索，不提升当前 GPU 候选状态。当前 16K 
 [di-varlen]: https://github.com/deepseek-ai/DeepInfer/blob/9bd9cf243fc53ef9afbf8f04d391d989117d6ab9/deepinfer/model_executor/layers/tilelang_ops/cuda/schedule_mtp_varlen.py
 [di-engine]: https://github.com/deepseek-ai/DeepInfer/blob/9bd9cf243fc53ef9afbf8f04d391d989117d6ab9/deepinfer/engine/llm_engine.py
 [di-qa]: https://github.com/deepseek-ai/DeepInfer/blob/9bd9cf243fc53ef9afbf8f04d391d989117d6ab9/doc/inference_deployment_qa.md
+
+## 13. Reflex 参考项目（2026-10-22）
+
+Reflex 保留为 Wllm 的内部模式，与普通生成共用推理引擎基座。以下通过 GitHub API 固定默认分支快照，读取作者文档及部分打分/缓存源码；SHA 是研究定位，不加入 dependencies.json。许可证为 API/仓库线索，后续复用仍核对具体文件和第三方来源。所有外部速度/质量均为作者报告，本机收益未知；其他 R01–R45 未在本轮全部重查。
+
+| 编号 / 项目 | 固定 SHA / 许可证线索 | 可借鉴机制与适配边界 | 对应任务与最小验收 |
+|---|---|---|---|
+| R46 [LLM2Jev](https://github.com/Yinsongxu/LLM2Jev/tree/93d4fcdcc81e0732026a65195eca3b45333af451) | `93d4fcdcc81e0732026a65195eca3b45333af451` / Apache-2.0 | 逐候选 yes/no、分布组装、SGLang staged/MLX 前缀复用；Transformers CPU 回退不等于现有 Q4_K_M GGUF 路径。与 Wllm 直接标签法概率和部分 confidence/usage 语义不同 | E3-07B/D/E/G；先无缓存策略对照，再核实后端完整状态与分阶段净成本；短输入及热缓存负收益须保留 |
+| R47 [SemIf，原 OpenJev](https://github.com/TheoLeeCJ/SemIf-OpenJev/tree/23cf1f39fc9534fe81437200959b6dfc7106e45a) | `23cf1f39fc9534fe81437200959b6dfc7106e45a` / MIT | 直接选项读出、state 共享/后缀批处理、组隔离校准；已有 CPU/GGUF 整序列状态保存/恢复的串行后缀路径，另有 GPU 快速复用结果变化记录 | E3-03、E3-07A/C/D/E；优先核查原生序列状态 API，验证重算参照、混合状态隔离、完整 logits 和标签扰动；不把 CUDA 或 CPU 路径当本机精确证明 |
+| R48 [snapjudge](https://github.com/Micha0827/snapjudge/tree/80012ca2abe8d000798e2dc7d717171058f1e6db) | `80012ca2abe8d000798e2dc7d717171058f1e6db` / MIT | 问题/材料布局选择、Qwen 混合状态快照、标签前缀树；Apple MLX 代码和长度阈值不直接移植到 Windows | E3-03、E3-07C/F；具体 token 公共前缀、恢复隔离与新模板质量独立验证；多 token 局部分数不当作整词原始概率 |
+| R49 [llamacpp-jev](https://github.com/NakliTechie/llamacpp-jev/tree/bb1c0a85e3a96a3699f2c2e6d67e607522689799) | `bb1c0a85e3a96a3699f2c2e6d67e607522689799` / MIT | stock llama-server 的薄 API 适配、标签校验、检查点、n_probs 和 GBNF；接近当前 GGUF 路线 | E3-07G；核对采样/语法掩码前后分数、usage、模型身份、父超时及多进程资源，不把包装器直接等同 Wllm 原始 logits 读出 |
+| R50 [Kev](https://github.com/jaredpalmer/kev/tree/1f04cfa28e6a708485b28a9585010b9e436b776e) | `1f04cfa28e6a708485b28a9585010b9e436b776e` / Apache-2.0 | 专门训练权重/读出头、独立问题状态与校准；是不同模型路线 | E4-08、E3-07G 的可选适配；不替换当前 Qwen 保真基线，不开展本轮训练或下载；引入后独立验任务质量/资源 |
+| R51 [jeff](https://github.com/logan-markewich/jeff/tree/34b32f99a727c47b679adde33f4702a001e02979) | `34b32f99a727c47b679adde33f4702a001e02979` / MIT | GLiFormer 400M 模型、CPU/ONNX 与 System One API；属于小模型决策选项 | E4-08、E3-07G；协议可参考，换模型后的质量与容量分组，不能当当前大模型的无损推理优化 |
+
+R01 的本地固定 llama.cpp 已含原生 System One server 路由，但检查决策类型、元数据与专用模板。端点存在不证明普通 Qwen GGUF 可直接使用，也不等于 Wllm 已提供 HTTP。后续优先核查该基础设施及 R49 的薄适配复用；普通生成、现有直接标签与原生决策模型分别验收。
+
+详细固定文件来源、公式差异、作者基准的设备/负载/负收益，以及 E3-07A–G 研究次序见[Reflex 参考研究与后续设计](reflex-research.md)。本轮不新增开关、策略、测试或性能数据；已验证结果仍以原本机报告为准。
