@@ -2,6 +2,8 @@
 
 Wllm 是独立的本地模型推理优化项目，正式名称为 **Wllm**。
 
+**完整路线与进展从[总体计划汇总报告](docs/master-plan-report.md)开始阅读。** 报告统一整理原性能优化、Reflex、容量扩展、适配优先级、当前证据与交付关口；适配清单不替代原来的执行/状态/算子/推测优化路线。
+
 **Reflex（反射决策）是 Wllm 内的候选决策模式。** 普通生成与 Reflex 在同一仓库、同一推理引擎基座上演进，共用模型加载、后端执行、资源管理和计量；各自的模板、输出语义与质量/性能分别验收。项目目录统一为 `C:\Users\97554\Desktop\Wllm`。现有运行参数继续使用 `generate`、`system_one` 和 `candidate_score`，Reflex 是模式名称。
 
 创建日期：2026-10-07。文档更新：2026-10-23，运行实现仍为现有 0.2。主线以全品类硬件、全品类模型为长期目标；Reflex 共用硬件与基座，仅选择适用决策的模型/任务，不要求兼容全部模型，纯生图/生视频/音频合成不纳入常规兼容。[覆盖清单与适配顺序](docs/hardware-model-coverage.md)分别记录目标、当前实现和报告绑定的验证。本轮只改文档。当前已实现首批 CPU 基础优化与对照工具、权重驻留独立请求及 CPU Reflex；结果与限制见 [E2 报告](reports/e2-validation.md)、[协议报告](reports/system-one-validation.md)，首版记录保留于[原型报告](reports/prototype-validation.md)。
@@ -59,12 +61,13 @@ Wllm 是独立的本地模型推理优化项目，正式名称为 **Wllm**。
 - 已增加 CPU 实际内存诊断与绑定模型/构建/配置的校准准入；独立 Vulkan 构建完成了 Iris Xe 两层放置的小输入运行探测，完整 GPU 数值与性能验收仍待完成。见[本轮报告](reports/memory-backend-validation.md)。
 - 后续 4K 同条件 CPU/Vulkan 数值筛选未通过：生成 token 相同但完整词表 logits 超出既有门槛，未开展正式性能比较，实验入口不作为默认优化。见[Vulkan 正确性报告](reports/vulkan-validation.md)。
 - 第一阶段已确定为 Qwen3.5 文本推理；视觉等能力后续扩展并独立验收。
-- 先解决本机与当前模型，再推广到其他模型、参数规模、量化及硬件。
+- 本机与当前模型继续补证和优化，同时按用户 P1 类别推进有限代表适配；新组合分别验收，不要求等所有本机研究完成后再扩展。
 - wgp 是未来可选接入方，不构成当前阶段的依赖或验收条件。
 - 训练、剪枝、蒸馏、游戏业务逻辑和多机服务均不属于当前实施范围。
 
 ## 文档
 
+- [总体计划与进展汇总报告](docs/master-plan-report.md)：性能主线、Reflex、容量、覆盖、策略选择、完整任务账及近期依赖的统一入口。
 - [项目目标与决策](docs/project-goals.md)：用户已确认内容、A/B/C 比较、边界和待决事项。
 - [架构设计](docs/architecture.md)：执行、状态、资源、配置与扩展边界。
 - [System One 文本请求](docs/system-one-protocol.md)：state/questions/answers 格式、题型、使用入口与本地执行边界。

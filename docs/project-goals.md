@@ -1,5 +1,7 @@
 # Wllm 项目目标与决策
 
+所有计划的统一入口见[总体计划与进展汇总报告](master-plan-report.md)，包含原性能路线、Reflex、容量与适配任务、当前证据和推进顺序。目标、实施与历史验收各自保留细节，本轮汇总不改变实现。
+
 更新：2026-10-23，主线保留全品类模型覆盖，按用户随后澄清将 Reflex 收敛为适用决策模型/任务子集，见[覆盖清单](hardware-model-coverage.md)。硬件目标和用户三档适配优先级保持。本轮仅改文档，不扩大已实现/已验证范围。2026-10-22 的候选 CPU 首版有界证据见[候选打分报告](../reports/candidate-score-validation.md)，不作为通用质量或速度保证；此前实现边界见[上下文扩展报告](../reports/context16k-validation.md)、[原型报告](../reports/prototype-validation.md)和 [E2 报告](../reports/e2-validation.md)。16K 默认上下文及此前约束保留。
 
 ## 1. 已确认的项目意图
