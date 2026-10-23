@@ -4,9 +4,9 @@ Wllm 是独立的本地模型推理优化项目，正式名称为 **Wllm**。
 
 **Reflex（反射决策）是 Wllm 内的候选决策模式。** 普通生成与 Reflex 在同一仓库、同一推理引擎基座上演进，共用模型加载、后端执行、资源管理和计量；各自的模板、输出语义与质量/性能分别验收。项目目录统一为 `C:\Users\97554\Desktop\Wllm`。现有运行参数继续使用 `generate`、`system_one` 和 `candidate_score`，Reflex 是模式名称。
 
-创建日期：2026-10-07。文档更新：2026-10-23，运行实现仍为现有 0.2。主线与 Reflex 均以全品类硬件、全品类模型为长期覆盖目标；[覆盖清单与适配顺序](docs/hardware-model-coverage.md)分别记录目标、当前实现和报告绑定的验证。本轮只改文档。当前已实现首批 CPU 基础优化与对照工具、权重驻留独立请求及 CPU Reflex；结果与限制见 [E2 报告](reports/e2-validation.md)、[协议报告](reports/system-one-validation.md)，首版记录保留于[原型报告](reports/prototype-validation.md)。
+创建日期：2026-10-07。文档更新：2026-10-23，运行实现仍为现有 0.2。主线以全品类硬件、全品类模型为长期目标；Reflex 共用硬件与基座，仅选择适用决策的模型/任务，不要求兼容全部模型，纯生图/生视频/音频合成不纳入常规兼容。[覆盖清单与适配顺序](docs/hardware-model-coverage.md)分别记录目标、当前实现和报告绑定的验证。本轮只改文档。当前已实现首批 CPU 基础优化与对照工具、权重驻留独立请求及 CPU Reflex；结果与限制见 [E2 报告](reports/e2-validation.md)、[协议报告](reports/system-one-validation.md)，首版记录保留于[原型报告](reports/prototype-validation.md)。
 
-适配按用户指定三档推进：**P1** 硬件为 x86 CPU/Intel GPU/NVIDIA GPU，模型为通用 Dense/MoE/推理/代码；**P2** 硬件为 PC NPU/内存与存储/多设备协同，模型为图文/OCR/文档、视频理解、语音/音频、全模态、图像/视频/音频生成及视觉/其他任务；其余 **P3** 后期完善。优先级不等于已支持。当前可用验证范围仍是本机 Windows CPU 与 Qwen3.5 文本 Q4_K_M；Iris Xe Vulkan 实验数值门槛未通过，不宣称跨硬件兼容或加速。
+适配按用户指定三档推进：**P1** 硬件为 x86 CPU/Intel GPU/NVIDIA GPU，主线模型为通用 Dense/MoE/推理/代码；**P2** 硬件为 PC NPU/内存与存储/多设备协同，主线模型为图文/OCR/文档、视频理解、语音/音频、全模态、图像/视频/音频生成及视觉/其他任务；其余 **P3** 后期完善。Reflex 只从中选适用子集并沿用档位。优先级不等于已支持。当前可用验证范围仍是本机 Windows CPU 与 Qwen3.5 文本 Q4_K_M；Iris Xe Vulkan 实验数值门槛未通过，不宣称跨硬件兼容或加速。
 
 2026-10-21 推进最小资源账本与评测准入：新增不执行模型的资源探测、共享容量说明、Vulkan UUID/DXGI LUID 接口归并、F32 循环状态预算，以及逐次评测资源检查；聊天、代码和长文三类负载已准备。新增参考项目仍属研究项。当前内存余量未满足保守性能预算，未开展正式性能跑分或 GPU 模型验收，见[资源与基线准备报告](reports/resource-validation.md)。
 

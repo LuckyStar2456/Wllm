@@ -4,7 +4,7 @@
 
 更新：2026-10-22。按 JEV / TypeSafe 的 `state + questions` 请求和具名 `answers` 响应适配本地 CPU 候选打分。只接受 `questions`，不接受 `ask`。这是 JSON 请求/响应适配，当前没有 HTTP 服务，也不会调用远程 JEV。实现和本机有界测试见[本轮报告](../reports/system-one-validation.md)。
 
-2026-10-23 文档补充：主线与 Reflex 的[长期硬件/模型覆盖及优先级](hardware-model-coverage.md)不扩大本协议的当前能力。GPU、多模型读出及多模态需要独立适配/验收；未来模态输入另作版本化设计，不把当前 `state` 的 JSON 接受能力当作图像/音频/视频理解。当前字段、题型、CLI 及 CPU 限制保持原样。
+2026-10-23 文档补充：[覆盖清单及优先级](hardware-model-coverage.md)区分主线全品类模型目标与 Reflex 适用子集，Reflex 不要求兼容纯生成等全部模型，也不扩大本协议的当前能力。GPU、目标内其他读出及多模态理解需要独立适配/验收；未来模态输入另作版本化设计，不把当前 `state` 的 JSON 接受能力当作图像/音频/视频理解。当前字段、题型、CLI 及 CPU 限制保持原样。
 
 ## 运行
 
