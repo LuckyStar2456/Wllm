@@ -6,6 +6,7 @@
   "persistent_threadpool": false,
   "prefill_last_only": false,
   "cpu_weight_repacking": false,
+  "prefix_cache_mib": 0,
   "batch": 128,
   "max_tokens": -1,
   "temperature": 1.0,

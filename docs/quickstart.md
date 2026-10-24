@@ -2,6 +2,8 @@
 
 本机 Windows / CPU 文本路径。默认上下文 **16384 token（16K）**，用户可以显式调整；程序不会因内存不足或输入过长自动缩短上下文、截断输入或改变精度。默认思考开启，采用现有模型记录的 temperature=1、top_k=20、top_p=0.95、presence_penalty=1.5。
 
+2026-10-24 新增默认关闭的 CPU 前缀快照实验，正常运行保持 `prefix_cache_mib=0` / `-PrefixCacheMiB 0`。它尚未通过真实缓存恢复、数值或性能验收，不是推荐加速配置；只在资源充足并显式选择驻留实验时考虑启用，详细限制与后续命令见[本轮报告](../reports/prefix-cache-candidate.md)。
+
 ## 准备与构建
 
 在 Wllm 根目录使用 PowerShell。需要 Visual Studio 2022 的 C++ x64 工具与 CMake，以及 Git。运行时是原生 C++ 程序，不依赖 Ollama 服务。

@@ -13,6 +13,7 @@ param(
     [ValidateSet('on','off')][string]$PersistentThreadpool,
     [ValidateSet('on','off')][string]$PrefillLastOnly,
     [ValidateSet('on','off')][string]$CpuWeightRepacking,
+    [ValidateRange(0,4096)][int]$PrefixCacheMiB,
     [Alias('Profile')][switch]$ProfileTimings,
     [switch]$ProfileOps,
     [string]$Config = 'configs/local.json'
@@ -31,7 +32,7 @@ if ($ProfileTimings) { $params += '--profile' }
 if ($ProfileOps) { $params += '--profile-ops' }
 if ($PSBoundParameters.ContainsKey('Context')) { $params += @('--context', $Context) }
 if ($PSBoundParameters.ContainsKey('MaxTokens')) { $params += @('--max-tokens', $MaxTokens) }
-foreach ($entry in @(@('Threads','--threads'), @('ThreadsBatch','--threads-batch'), @('Batch','--batch'), @('PersistentThreadpool','--persistent-threadpool'), @('PrefillLastOnly','--prefill-last-only'), @('CpuWeightRepacking','--cpu-weight-repacking'))) {
+foreach ($entry in @(@('Threads','--threads'), @('ThreadsBatch','--threads-batch'), @('Batch','--batch'), @('PersistentThreadpool','--persistent-threadpool'), @('PrefillLastOnly','--prefill-last-only'), @('CpuWeightRepacking','--cpu-weight-repacking'), @('PrefixCacheMiB','--prefix-cache-mib'))) {
     if ($PSBoundParameters.ContainsKey($entry[0])) { $params += @($entry[1], $PSBoundParameters[$entry[0]]) }
 }
 if ($Prompt -and $PromptFile) { throw 'Use either Prompt or PromptFile' }

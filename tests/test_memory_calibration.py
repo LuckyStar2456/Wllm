@@ -36,6 +36,15 @@ def fixture():
 
 
 class CalibrationTests(unittest.TestCase):
+    def test_single_request_envelope_cannot_authorize_prefix_cache(self):
+        native, calibration = fixture()
+        native["config"]["prefix_cache_mib"] = 128
+        with self.assertRaises(ValueError):
+            memory.assess_calibrated(native, calibration)
+        calibration["binding"]["memory_config"]["prefix_cache_mib"] = 128
+        with self.assertRaises(ValueError):
+            memory.validate_binding(calibration, "exe", "model", "workloads")
+
     def test_exact_artifacts_and_complete_evidence(self):
         _, calibration = fixture()
         memory.validate_binding(calibration, "exe", "model", "workloads")

@@ -4,6 +4,8 @@ Wllm 是独立的本地模型推理优化项目，正式名称为 **Wllm**。
 
 **完整路线与进展从[总体计划汇总报告](docs/master-plan-report.md)开始阅读。** 报告统一整理原性能优化、Reflex、容量扩展、适配优先级、当前证据与交付关口；适配清单不替代原来的执行/状态/算子/推测优化路线。
 
+2026-10-24 性能推进：新增默认关闭的 CPU 有界前缀快照实验候选，普通生成与 Reflex 可显式选择；构建/工具及缓存关闭路径的有界回归通过，真实缓存恢复与性能因内存不足未验收。用户选择保留默认关闭候选；正式性能准入拒绝、样本为 0，Intel GPU 原数值候选仍关闭，NVIDIA 无实机证据。使用范围及失败记录见[本轮报告](reports/prefix-cache-candidate.md)。
+
 **Reflex（反射决策）是 Wllm 内的候选决策模式。** 普通生成与 Reflex 在同一仓库、同一推理引擎基座上演进，共用模型加载、后端执行、资源管理和计量；各自的模板、输出语义与质量/性能分别验收。项目目录统一为 `C:\Users\97554\Desktop\Wllm`。现有运行参数继续使用 `generate`、`system_one` 和 `candidate_score`，Reflex 是模式名称。
 
 创建日期：2026-10-07。文档更新：2026-10-23，运行实现仍为现有 0.2。主线以全品类硬件、全品类模型为长期目标；Reflex 共用硬件与基座，仅选择适用决策的模型/任务，不要求兼容全部模型，纯生图/生视频/音频合成不纳入常规兼容。[覆盖清单与适配顺序](docs/hardware-model-coverage.md)分别记录目标、当前实现和报告绑定的验证。本轮只改文档。当前已实现首批 CPU 基础优化与对照工具、权重驻留独立请求及 CPU Reflex；结果与限制见 [E2 报告](reports/e2-validation.md)、[协议报告](reports/system-one-validation.md)，首版记录保留于[原型报告](reports/prototype-validation.md)。

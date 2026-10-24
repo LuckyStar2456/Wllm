@@ -21,5 +21,7 @@ __pycache__/
 !/reports/candidate-score-validation.json
 !/reports/system-one-validation.md
 !/reports/system-one-validation.json
+!/reports/prefix-cache-candidate.md
+!/reports/prefix-cache-candidate.json
 /configs/local.json
 *.user

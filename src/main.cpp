@@ -6,6 +6,7 @@
 #include "core.h"
 #include "candidate_score.h"
 #include "system_one.h"
+#include "prefix_cache.h"
 #include "resources.h"
 #include "profile.h"
 #include "terminal.h"
@@ -154,7 +155,7 @@ static void display(const json & j, bool final = false) {
       << "tok/s avg=" << value(j,"decode_average_tps") << "tok/s RAM=" << value(j,"working_set_bytes",1048576)
       << "MiB private=" << value(j,"private_bytes",1048576) << "MiB free=" << value(j,"system_available_bytes",1048576)
       << "MiB peak=" << value(j,"sampled_peak_working_set_bytes",1048576) << "MiB";
-    s << " reused=" << j.at("model_reused");
+    s << " reused=" << j.at("model_reused") << " prefix_tokens=" << j.at("input_reused");
     if (!j.at("decision_s").is_null()) s << " decision=" << value(j,"decision_s") << "s";
     if (final) s << " reason=" << j.at("end_reason").get<std::string>();
     // Separate stderr lines work both on a terminal and when stdout is redirected.
@@ -237,7 +238,8 @@ static void preflight(State & s, bool enforce = true) {
     const uint64_t recurrent = recurrent_layers * 4 * ((conv - 1) * (inner + 2 * groups * state) + state * inner);
     // A conservative admission estimate, not a measured runtime allocation.
     const uint64_t workspace = 3072ULL << 20;
-    const uint64_t estimated = weights + kv + recurrent + workspace;
+    const uint64_t cache_budget = uint64_t(c.prefix_cache_mib) << 20;
+    const uint64_t estimated = weights + kv + recurrent + workspace + cache_budget;
     MEMORYSTATUSEX m{}; m.dwLength=sizeof(m);
     if (!GlobalMemoryStatusEx(&m)) throw std::runtime_error("Cannot read system memory budget");
     {
@@ -256,20 +258,22 @@ static void preflight(State & s, bool enforce = true) {
     const uint64_t headroom = resources.at("commit_headroom_bytes").get<uint64_t>();
     const uint64_t additional_copy = c.cpu_weight_repacking ? weights : 0;
     const uint64_t physical_required = estimated + additional_copy + reserve;
-    const uint64_t commit_required = kv + recurrent + workspace + additional_copy + reserve;
+    const uint64_t commit_required = kv + recurrent + workspace + cache_budget + additional_copy + reserve;
     std::vector<std::string> reasons;
     if (c.gpu_layers) reasons.push_back("experimental_vulkan_memory_requires_separate_calibration");
     if (physical_required > resources.at("physical_available_bytes").get<uint64_t>()) reasons.push_back("available_physical_below_conservative_resident_budget");
     if (commit_required > headroom) reasons.push_back("system_commit_headroom_below_estimate");
     if (c.cpu_weight_repacking) reasons.push_back("experimental_repacking_not_numerically_accepted");
+    if (c.prefix_cache_mib) reasons.push_back("prefix_cache_requires_separate_session_calibration");
     s.identity["resource_ledger"] = {
-        {"estimate_scope", "pinned CPU qwen35, one sequence, no prefix/draft/rollback cache"},
+        {"estimate_scope", "pinned CPU qwen35, one sequence, explicit prefix budget, no draft/rollback cache"},
         {"source", "GGUF metadata + pinned llama-hparams.cpp/llama-model.cpp; workspace is a conservative allowance"},
         {"system_at_admission", resources},
         {"components", {{"mapped_file_bytes", weights}, {"mapped_file_resident_bytes", nullptr},
             {"attention_kv_f16_estimate_bytes", kv}, {"recurrent_f32_estimate_bytes", recurrent},
             {"workspace_allowance_bytes", workspace}, {"workspace_measured_bytes", nullptr},
-            {"extra_weight_copy_estimate_bytes", additional_copy}, {"prefix_cache_bytes", 0},
+            {"extra_weight_copy_estimate_bytes", additional_copy}, {"prefix_cache_bytes", cache_budget ? json(nullptr) : json(0)},
+            {"prefix_cache_budget_bytes",cache_budget},
             {"draft_bytes", 0}, {"rollback_snapshot_bytes", 0}, {"system_reserve_bytes", reserve}}},
         {"startup_physical_budget_bytes", physical_required}, {"steady_physical_budget_bytes", physical_required},
         {"additional_commit_budget_bytes", commit_required}, {"peaks_calibrated", false},
@@ -277,7 +281,7 @@ static void preflight(State & s, bool enforce = true) {
         {"inference_policy", "performance screening is stricter than ordinary inference; no automatic setting changes"}};
     if (c.gpu_layers) s.identity["resource_ledger"]["estimate_scope"]="CPU reference estimate only; Vulkan driver/device peaks are not calibrated";
     if (!enforce) return;
-    if (estimated + reserve > m.ullTotalPhys || kv + recurrent + (512ULL << 20) + reserve > m.ullAvailPageFile || m.ullAvailPhys < reserve) {
+    if (estimated + reserve > m.ullTotalPhys || kv + recurrent + cache_budget + (512ULL << 20) + reserve > m.ullAvailPageFile || m.ullAvailPhys < reserve) {
         std::ostringstream error;
         error << "Insufficient memory budget: estimated weights+KV+recurrent+workspace=" << estimated / 1048576
               << " MiB, reserve=" << reserve / 1048576 << " MiB, physical total=" << m.ullTotalPhys / 1048576
@@ -379,8 +383,58 @@ static void assign_system_one_labels(CandidateTask & task, const llama_vocab * v
     if (next!=task.candidates.size()) throw std::runtime_error("Not enough validated single-token labels for this model");
 }
 
+static std::string prefix_identity(const Config & config, llama_model * model) {
+    auto identity=config.dump();
+    // Presentation, deadlines and reserve policy do not change model state.
+    for (const auto * field:{"record","refresh_ms","timeout_s","reserve_mib","prefix_cache_mib"}) identity.erase(field);
+    const auto path=fs::u8path(config.model);
+    identity["model_instance"]=reinterpret_cast<uintptr_t>(model);
+    identity["file_size"]=fs::file_size(path);
+    identity["file_write_time"]=fs::last_write_time(path).time_since_epoch().count();
+    identity["llama_commit"]=WLLM_LLAMA_COMMIT;
+    identity["cpu_build"]=WLLM_CPU_TARGET;
+    return identity.dump();
+}
+
+static void save_prefix(State & s, llama_context * ctx, const std::string & key,
+        const std::vector<llama_token> & tokens, size_t count, PrefixCache & cache, PrefixCache & pending) {
+    const auto started=Clock::now();
+    llama_synchronize(ctx);
+    const size_t size=llama_state_seq_get_size_ext(ctx,0,LLAMA_STATE_SEQ_FLAGS_NONE);
+    const uint64_t required=uint64_t(size)+count*sizeof(int32_t)+key.size();
+    std::string status;
+    if (!size) throw std::runtime_error("Cannot size the complete prefix sequence state");
+    if (required > (uint64_t(s.config.prefix_cache_mib)<<20)) status="snapshot_exceeds_budget";
+    else {
+        // Release the old entry before allocating a replacement: one snapshot budget.
+        cache.clear();
+        const auto resources=system_resources();
+        const uint64_t reserve=uint64_t(s.config.reserve_mib*1048576);
+        if (required+reserve > resources.at("physical_available_bytes").get<uint64_t>() ||
+            required+reserve > resources.at("commit_headroom_bytes").get<uint64_t>()) status="snapshot_resource_skipped";
+        else {
+            try {
+                pending.key=key;
+                pending.tokens.assign(tokens.begin(),tokens.begin()+count);
+                pending.state.resize(size);
+            } catch (const std::bad_alloc &) { pending.clear(); status="snapshot_allocation_skipped"; }
+            if (status.empty()) {
+                if (llama_state_seq_get_data_ext(ctx,pending.state.data(),size,0,LLAMA_STATE_SEQ_FLAGS_NONE)!=size) {
+                    pending.clear(); throw std::runtime_error("Complete prefix snapshot write failed");
+                }
+                status="snapshot_staged";
+            }
+        }
+    }
+    std::lock_guard<std::mutex> lock(s.mutex);
+    s.metrics.prefix_save_s+=std::chrono::duration<double>(Clock::now()-started).count();
+    s.metrics.prefix_cache_bytes=pending.state.empty()?cache.bytes():pending.bytes();
+    if (s.metrics.input_reused==0) s.metrics.prefix_cache_status=status;
+    s.identity["prefix_snapshot_status"]=status;
+}
+
 static std::string run(State & s, const std::string & prompt, const std::string & system, const std::string & inspect_path,
-        const std::string & logits_path, ModelPtr * resident, const CandidateTask * task) {
+        const std::string & logits_path, ModelPtr * resident, const CandidateTask * task, PrefixCache * cache, PrefixCache & pending) {
     ModelPtr transient(nullptr, llama_model_free);
     auto & model = resident ? *resident : transient;
     { std::lock_guard<std::mutex> lock(s.mutex); s.metrics.model_reused = bool(model); }
@@ -496,6 +550,27 @@ static std::string run(State & s, const std::string & prompt, const std::string 
     }
     std::unique_ptr<llama_batch_ext,decltype(&llama_batch_ext_free)> batch(llama_batch_ext_init(ctx.get()),llama_batch_ext_free);
     int pos=0;
+    std::string cache_key;
+    const size_t checkpoint=cache?PrefixCache::checkpoint(tokens.size(),c.batch):0;
+    if (cache) {
+        cache_key=prefix_identity(c,model.get());
+        const auto reused=cache->match(cache_key,tokens,c.batch);
+        { std::lock_guard<std::mutex> lock(s.mutex);
+          s.metrics.prefix_cache_status=checkpoint?"miss":"input_shorter_than_batch";
+          s.metrics.prefix_cache_bytes=cache->bytes(); }
+        if (reused) {
+            if (s.cancelled()) return s.timed_out?"timeout":"cancelled";
+            const auto started=Clock::now();
+            const auto restored=llama_state_seq_set_data_ext(ctx.get(),cache->state.data(),cache->state.size(),0,LLAMA_STATE_SEQ_FLAGS_NONE);
+            if (restored!=cache->state.size() || llama_memory_seq_pos_max(llama_get_memory(ctx.get()),0)!=llama_pos(reused-1)) {
+                cache->clear(); throw std::runtime_error("Complete prefix state restore failed; no implicit recomputation");
+            }
+            pos=int(reused);
+            std::lock_guard<std::mutex> lock(s.mutex);
+            s.metrics.input_reused=pos; s.metrics.prefix_cache_status="hit";
+            s.metrics.prefix_restore_s=std::chrono::duration<double>(Clock::now()-started).count();
+        }
+    }
     while(pos<int(tokens.size())) {
         if (s.cancelled()) return s.timed_out ? "timeout" : "cancelled";
         int n=std::min(c.batch,int(tokens.size())-pos);
@@ -511,8 +586,10 @@ static std::string run(State & s, const std::string & prompt, const std::string 
         }
         if (rc!=0) { if (s.cancelled()) return s.timed_out ? "timeout" : "cancelled"; throw std::runtime_error("Prefill failed: " + std::to_string(rc)); }
         pos+=n;
-        { std::lock_guard<std::mutex> lock(s.mutex); s.metrics.input_done=pos;
+        { std::lock_guard<std::mutex> lock(s.mutex); s.metrics.input_done=pos-s.metrics.input_reused;
           ++s.metrics.prefill_batches; if (output) ++s.metrics.prefill_logits_batches; }
+        if (cache && size_t(pos)==checkpoint && !s.cancelled())
+            save_prefix(s,ctx.get(),cache_key,tokens,checkpoint,*cache,pending);
     }
     { std::lock_guard<std::mutex> lock(s.mutex); s.metrics.prefill_end=s.now(); s.metrics.stage=task?"selecting":"generating"; }
     observe_allocations(s, ctx.get(), "prefill_complete");
@@ -574,12 +651,14 @@ static void usage() {
         "  --threads-batch N (0 = threads) --persistent-threadpool on|off\n"
         "  --prefill-last-only on|off (skip unused intermediate logits)\n"
         "  --cpu-weight-repacking on|off (experimental CPU weight layout)\n"
+        "  --prefix-cache-mib N (experimental; 0=off; bounded CPU resident-session snapshots)\n"
         "  --prompt TEXT | --prompt-file UTF8_FILE (otherwise read one line)\n"
         "  --interactive (retain weights between independent prompts; /exit quits)\n"
         "  --system TEXT --max-tokens N (-1 = until EOS/context) --seed N\n"
         "  --temperature N --thinking on|off --timeout SECONDS\n"
         "  --record PATH --cancel-file PATH --inspect PATH --quiet-metrics\n"
         "  --logits-file PATH (diagnostic: final prefill logits, float32 little-endian)\n"
+        "  --logits-directory NEW_DIR (interactive diagnostic: separate numbered files)\n"
         "  --mode generate|candidate_score --candidates UTF8_JSON (CPU; returns a JSON decision)\n"
         "  --mode system_one [--request-file UTF8_JSON] (state + questions; stdin/interactive JSON also supported)\n"
         "  --profile (phase timings) --profile-ops (intrusive operator diagnostic)\n"
@@ -605,8 +684,10 @@ public:
 static int execute_request(const Config & config, const std::string & prompt, const std::string & system,
         const std::string & inspect, const std::string & logits_file, const std::string & cancel_file,
         bool quiet, bool profile, bool profile_ops, bool memory_diagnostic, ModelPtr * resident, const CandidateTask * task,
-        bool emit_decision=true, json * decision_out=nullptr) {
+        bool emit_decision=true, json * decision_out=nullptr, PrefixCache * cache=nullptr) {
     State state; state.config=config; state.cancel_file=cancel_file;
+    state.metrics.prefix_cache_status=config.prefix_cache_mib?"not_started":"disabled";
+    PrefixCache pending;
     state.memory_diagnostic=memory_diagnostic;
     state.profile.enabled=profile || profile_ops; state.profile.operators=profile_ops;
     if(prompt.empty()) throw std::runtime_error("Prompt is empty");
@@ -639,11 +720,13 @@ static int execute_request(const Config & config, const std::string & prompt, co
               << " presence_penalty=" << state.config.presence_penalty << '\n';
     if (state.config.cpu_weight_repacking)
         std::cerr << "[Wllm] Experimental CPU repacking: failed current baseline numerical checks; research use only.\n";
+    if (state.config.prefix_cache_mib)
+        std::cerr << "[Wllm] Experimental CPU prefix cache: explicit budget, separate numerical/session performance acceptance required.\n";
     // A decision is one JSON line, including on a real console; never place it in the alternate screen.
     state.terminal.start(quiet || task!=nullptr);
     std::thread monitor(observer,std::ref(state),std::ref(record),std::cref(id),quiet);
     std::string reason;
-    try { reason=run(state,prompt,system,inspect,logits_file,resident,task); }
+    try { reason=run(state,prompt,system,inspect,logits_file,resident,task,cache,pending); }
     catch(const std::exception & e) { reason=state.cancelled()?(state.timed_out?"timeout":"cancelled"):"error"; std::lock_guard<std::mutex> lock(state.mutex); state.metrics.error=e.what(); }
     if (task && (reason=="selected" || reason=="abstained") && state.cancelled())
         reason=state.timed_out?"timeout":"cancelled";
@@ -686,11 +769,13 @@ static int execute_request(const Config & config, const std::string & prompt, co
         std::cout << state.decision.dump() << '\n' << std::flush;
         if (!std::cout) { std::cerr << "Decision output write failed\n"; return 1; }
     }
+    if (cache && !pending.state.empty() && (reason=="eos" || reason=="max_tokens" || reason=="context_limit" ||
+            reason=="selected" || reason=="abstained")) cache->swap(pending);
     return reason=="error"?1:reason=="cancelled"?130:reason=="timeout"?124:0;
 }
 
 static int execute_system_one(const Config & config, const std::string & body, const std::string & cancel_file,
-        bool quiet, bool profile, bool profile_ops, bool memory_diagnostic, ModelPtr & resident) {
+        bool quiet, bool profile, bool profile_ops, bool memory_diagnostic, ModelPtr & resident, PrefixCache * cache) {
     const auto started=Clock::now();
     const auto elapsed=[&] { return std::chrono::duration<double>(Clock::now()-started).count(); };
     const std::string id="systemone-"+std::to_string(std::chrono::duration_cast<std::chrono::microseconds>(started.time_since_epoch()).count())+
@@ -701,7 +786,7 @@ static int execute_system_one(const Config & config, const std::string & body, c
             {"model_path",config.model},
             {"execution","sequential isolated questions; retained local weights"},
             {"probabilities","candidate-normalized local logits; not calibrated correctness"},
-            {"usage_scope","sum of completed prefill batches; aborted partial work is not measurable"}}}};
+            {"usage_scope","sum of completed newly computed prefill tokens; reused tokens in question metrics; aborted partial work is not measurable"}}}};
     int code=0;
     std::string active_question;
     bool validated=false;
@@ -732,7 +817,7 @@ static int execute_system_one(const Config & config, const std::string & body, c
             q.task.protocol_metadata={{"system_one_request_id",id},{"question_id",q.id},{"type",q.type}};
             json decision;
             code=execute_request(effective,request.prompt(),q.system_prompt(),"","",cancel_file,
-                quiet,profile,profile_ops,memory_diagnostic,&resident,&q.task,false,&decision);
+                quiet,profile,profile_ops,memory_diagnostic,&resident,&q.task,false,&decision,cache);
             if (decision.contains("metrics")) response["usage"]["input_tokens"]=
                 response["usage"]["input_tokens"].get<int>()+decision["metrics"]["input_processed"].get<int>();
             if (code!=0) {
@@ -767,6 +852,7 @@ static int execute_system_one(const Config & config, const std::string & body, c
         response["error"]={{"type","record_error"},{"message",e.what()}};
     }
     std::cout << response.dump() << '\n' << std::flush;
+    if (cache && (code!=0 || !std::cout)) cache->clear();
     return std::cout?code:1;
 }
 
@@ -781,9 +867,9 @@ static int main_utf8(int argc,char ** argv) {
             if(++i==argc) throw std::runtime_error("--config needs a path");
             settings=json::parse(read_text(argv[i]));
         }
-        std::string prompt,system,inspect,cancel_file,logits_file,resources_file,candidates_file,request_file;
+        std::string prompt,system,inspect,cancel_file,logits_file,logits_directory,resources_file,candidates_file,request_file;
         bool prompt_set=false, quiet=false, interactive=false, profile=false, profile_ops=false, memory_diagnostic=false;
-        const std::map<std::string,std::string> ints={{"--context","context"},{"--threads","threads"},{"--threads-batch","threads_batch"},{"--batch","batch"},{"--gpu-layers","gpu_layers"},{"--max-tokens","max_tokens"},{"--seed","seed"}};
+        const std::map<std::string,std::string> ints={{"--context","context"},{"--threads","threads"},{"--threads-batch","threads_batch"},{"--batch","batch"},{"--gpu-layers","gpu_layers"},{"--prefix-cache-mib","prefix_cache_mib"},{"--max-tokens","max_tokens"},{"--seed","seed"}};
         const std::map<std::string,std::string> bools={{"--thinking","thinking"},{"--persistent-threadpool","persistent_threadpool"},{"--prefill-last-only","prefill_last_only"},{"--cpu-weight-repacking","cpu_weight_repacking"}};
         for(int i=1;i<argc;++i) {
             const std::string arg=argv[i];
@@ -802,6 +888,7 @@ static int main_utf8(int argc,char ** argv) {
             else if(arg=="--record") settings["record"]=v;
             else if(arg=="--inspect") inspect=v;
             else if(arg=="--logits-file") logits_file=v;
+            else if(arg=="--logits-directory") logits_directory=v;
             else if(arg=="--cancel-file") cancel_file=v;
             else if(arg=="--resources") resources_file=v;
             else if(arg=="--mode") settings["inference_mode"]=v;
@@ -815,7 +902,7 @@ static int main_utf8(int argc,char ** argv) {
         const auto config=Config::parse(settings);
         const bool system_one=config.inference_mode=="system_one";
         if (!system_one && !request_file.empty()) throw std::runtime_error("--request-file requires --mode system_one");
-        if (system_one && (prompt_set || !system.empty() || !inspect.empty() || !logits_file.empty() || !candidates_file.empty() || !resources_file.empty()))
+        if (system_one && (prompt_set || !system.empty() || !inspect.empty() || !logits_file.empty() || !logits_directory.empty() || !candidates_file.empty() || !resources_file.empty()))
             throw std::runtime_error("system_one accepts state/questions JSON; do not combine with prompt, system, candidates, inspect, logits or resources");
         std::optional<CandidateTask> task;
         if (config.inference_mode=="candidate_score") {
@@ -824,7 +911,7 @@ static int main_utf8(int argc,char ** argv) {
         } else if (!candidates_file.empty()) throw std::runtime_error("--candidates requires --mode candidate_score");
         if (config.gpu_layers && !WLLM_VULKAN) throw std::runtime_error("Vulkan was not compiled into this executable; use the separate validation build");
         if (!resources_file.empty()) {
-            if (task || prompt_set || interactive || !inspect.empty() || !logits_file.empty() || profile || profile_ops || memory_diagnostic || !cancel_file.empty() || !system.empty())
+            if (task || prompt_set || interactive || !inspect.empty() || !logits_file.empty() || !logits_directory.empty() || profile || profile_ops || memory_diagnostic || !cancel_file.empty() || !system.empty())
                 throw std::runtime_error("--resources is a standalone probe; do not combine with request/diagnostic options");
             State state; state.config = config;
             json report = {{"schema_version",1}, {"evidence", "resource probe only; no model execution"},
@@ -846,12 +933,22 @@ static int main_utf8(int argc,char ** argv) {
         }
         if (interactive && (!inspect.empty() || !logits_file.empty()))
             throw std::runtime_error("Interactive mode cannot overwrite inspect/logits diagnostic files");
+        if (config.prefix_cache_mib && !interactive && !system_one)
+            throw std::runtime_error("Prefix cache requires --interactive or system_one; no implicit resident session");
+        if (!logits_directory.empty()) {
+            if (!interactive || !inspect.empty() || !logits_file.empty())
+                throw std::runtime_error("--logits-directory requires interactive mode without inspect/logits-file");
+            if (!fs::create_directories(fs::u8path(logits_directory)))
+                throw std::runtime_error("Logits directory must be new; refusing to overwrite diagnostics");
+        }
         BackendRuntime backend;
         ModelPtr resident(nullptr,llama_model_free);
+        PrefixCache prefix_cache;
+        auto * cache=config.prefix_cache_mib?&prefix_cache:nullptr;
         int code=0;
         if (system_one) {
             auto request=[&](const std::string & body) {
-                const int result=execute_system_one(config,body,cancel_file,quiet,profile,profile_ops,memory_diagnostic,resident);
+                const int result=execute_system_one(config,body,cancel_file,quiet,profile,profile_ops,memory_diagnostic,resident,cache);
                 if (result!=0) code=result;
                 return result;
             };
@@ -868,21 +965,28 @@ static int main_utf8(int argc,char ** argv) {
             }
         } else {
         if (!prompt_set) { std::cerr << "Prompt> "; std::getline(std::cin,prompt); }
+        size_t request_index=0;
         while (true) {
             if (interactive && (prompt.empty() || prompt=="/exit")) break;
-            code=execute_request(config,prompt,system,inspect,logits_file,cancel_file,quiet,profile,profile_ops,memory_diagnostic,interactive?&resident:nullptr,task?&*task:nullptr);
+            const auto diagnostic=logits_directory.empty()?logits_file:
+                (fs::u8path(logits_directory)/(std::to_string(request_index++)+".f32")).u8string();
+            code=execute_request(config,prompt,system,inspect,diagnostic,cancel_file,quiet,profile,profile_ops,memory_diagnostic,interactive?&resident:nullptr,task?&*task:nullptr,true,nullptr,cache);
             if (!interactive || code!=0 || interrupted.load()) break;
             if (!task) std::cout << '\n' << std::flush;
-            std::cerr << "[Wllm] Weights retained; each prompt starts a fresh context. /exit or empty line releases the model.\nPrompt> ";
+            std::cerr << "[Wllm] Weights retained; independent context, explicit prefix cache=" << bool(cache)
+                      << ". /exit or empty line releases the model.\nPrompt> ";
             if (!std::getline(std::cin,prompt)) break;
         }
         }
         if (resident) {
+            const auto cache_bytes=prefix_cache.bytes();
+            prefix_cache.clear();
             const auto release_start=Clock::now();
             resident.reset();
             const double release_s=std::chrono::duration<double>(Clock::now()-release_start).count();
             std::ofstream record(fs::u8path(config.record),std::ios::app|std::ios::binary);
-            record << json({{"event","session_end"},{"pid",GetCurrentProcessId()},{"model_release_s",release_s}}).dump() << '\n';
+            record << json({{"event","session_end"},{"pid",GetCurrentProcessId()},{"model_release_s",release_s},
+                {"prefix_cache_released_bytes",cache_bytes}}).dump() << '\n';
             record.flush();
             if (!record) throw std::runtime_error("Cannot record session release");
             std::cerr << "[Wllm] Session ended; retained model released in " << release_s << "s\n";

@@ -1,5 +1,7 @@
 # Reflex：候选打分快速决策模式（System 1 分支）
 
+2026-10-24：共用 CPU 基座新增默认关闭的单条前缀快照实验，`--prefix-cache-mib N`；候选预算和复用 token 单列，但模型恢复/数值/隔离与性能未验收，用户选择本轮保留候选。下面原有“前缀复用待研究”指采用/完整验收仍待完成，不将实验实现等同已验证缓存，见[报告](../reports/prefix-cache-candidate.md)。
+
 名称为 **Wllm Reflex**，简称 **Reflex（反射决策）**。它作为 Wllm 内部模式，与普通生成共用同一仓库和推理引擎基座，按同一路线演进。当前 CLI 继续使用 `system_one` / `candidate_score`；名称更新不改变运行协议、模型、默认生成设置或既有验收结果。
 
 文档更新：2026-10-23，补充[全品类覆盖与三档优先级](hardware-model-coverage.md)，未改实现。2026-10-22 首版状态仍为：**CPU 显式单 token 打分已实现；自动回退、多 token 评分及广泛任务质量/性能验收仍未完成**。默认模型与普通生成行为不变；本机有界证据见[验收报告](../reports/candidate-score-validation.md)。

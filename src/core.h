@@ -18,6 +18,7 @@ struct Config {
     bool persistent_threadpool = false, prefill_last_only = false;
     bool cpu_weight_repacking = false;
     int gpu_layers = 0; // Experimental Vulkan placement; zero preserves the CPU path.
+    int prefix_cache_mib = 0; // Explicit, bounded CPU sequence snapshot; disabled by default.
     double temperature = 1, top_p = .95, min_p = 0, repeat_penalty = 1;
     double presence_penalty = 1.5, frequency_penalty = 0;
     int top_k = 20, repeat_last_n = 64, refresh_ms = 500;
@@ -27,9 +28,9 @@ struct Config {
 
     static Config parse(const json & j) {
         Config c;
-        const auto known = json::parse(R"(["model","record","inference_mode","context","threads","threads_batch","batch","persistent_threadpool","prefill_last_only","cpu_weight_repacking","gpu_layers","max_tokens","temperature","top_p","min_p","repeat_penalty","presence_penalty","frequency_penalty","top_k","repeat_last_n","refresh_ms","seed","thinking","timeout_s","reserve_mib"])");
+        const auto known = json::parse(R"(["model","record","inference_mode","context","threads","threads_batch","batch","persistent_threadpool","prefill_last_only","cpu_weight_repacking","gpu_layers","prefix_cache_mib","max_tokens","temperature","top_p","min_p","repeat_penalty","presence_penalty","frequency_penalty","top_k","repeat_last_n","refresh_ms","seed","thinking","timeout_s","reserve_mib"])");
         if (!j.is_object()) throw std::runtime_error("Configuration must be an object");
-        for (const auto * key : {"context","threads","threads_batch","batch","gpu_layers","max_tokens","top_k","repeat_last_n","refresh_ms","seed"}) {
+        for (const auto * key : {"context","threads","threads_batch","batch","gpu_layers","prefix_cache_mib","max_tokens","top_k","repeat_last_n","refresh_ms","seed"}) {
             if (j.contains(key) && !j.at(key).is_number_integer()) throw std::runtime_error(std::string("Expected integer: ") + key);
             if (j.contains(key)) {
                 const auto v = j.at(key).get<int64_t>();
@@ -46,6 +47,7 @@ struct Config {
         READ_FIELD(threads_batch); READ_FIELD(persistent_threadpool); READ_FIELD(prefill_last_only);
         READ_FIELD(cpu_weight_repacking);
         READ_FIELD(gpu_layers);
+        READ_FIELD(prefix_cache_mib);
         READ_FIELD(batch); READ_FIELD(max_tokens); READ_FIELD(temperature); READ_FIELD(top_p);
         READ_FIELD(min_p); READ_FIELD(repeat_penalty); READ_FIELD(presence_penalty);
         READ_FIELD(frequency_penalty); READ_FIELD(top_k); READ_FIELD(repeat_last_n);
@@ -65,6 +67,10 @@ struct Config {
         if (max_tokens != -1 && max_tokens < 1) throw std::runtime_error("max_tokens must be -1 or positive");
         if (gpu_layers < 0 || gpu_layers > 1024) throw std::runtime_error("gpu_layers must be 0..1024; no automatic placement");
         if (gpu_layers && cpu_weight_repacking) throw std::runtime_error("Experimental Vulkan validation requires weight repacking off");
+        if (prefix_cache_mib < 0 || prefix_cache_mib > 4096)
+            throw std::runtime_error("prefix_cache_mib must be 0..4096; zero disables caching");
+        if (prefix_cache_mib && (gpu_layers || cpu_weight_repacking))
+            throw std::runtime_error("Prefix cache currently requires CPU execution with weight repacking off");
         if (!std::isfinite(temperature) || temperature < 0 || !std::isfinite(top_p) || top_p <= 0 || top_p > 1 ||
             !std::isfinite(min_p) || min_p < 0 || min_p > 1 || top_k < 0 ||
             !std::isfinite(repeat_penalty) || repeat_penalty <= 0 || repeat_last_n < -1 ||
@@ -79,6 +85,7 @@ struct Config {
             {"context", context}, {"threads", threads}, {"batch", batch},
             {"threads_batch", effective_threads_batch()}, {"persistent_threadpool", persistent_threadpool},
             {"prefill_last_only", prefill_last_only},
+            {"prefix_cache_mib", prefix_cache_mib},
             {"max_tokens", max_tokens}, {"temperature", temperature}, {"top_k", top_k}, {"top_p", top_p},
             {"min_p", min_p}, {"repeat_penalty", repeat_penalty}, {"repeat_last_n", repeat_last_n},
             {"presence_penalty", presence_penalty}, {"frequency_penalty", frequency_penalty},
@@ -95,6 +102,10 @@ struct Metrics {
     double decision_start = -1, decision_ready = -1;
     double load_start = -1, load_end = -1, prefill_start = -1, prefill_end = -1, ended = -1;
     int input_total = 0, input_done = 0, prefill_batches = 0, prefill_logits_batches = 0;
+    int input_reused = 0;
+    double prefix_restore_s = 0, prefix_save_s = 0;
+    uint64_t prefix_cache_bytes = 0;
+    std::string prefix_cache_status = "disabled";
     std::vector<double> token_times;
     std::vector<int32_t> token_ids;
     uint64_t working_set = 0, private_bytes = 0, available = 0, peak_working_set = 0;
@@ -122,7 +133,9 @@ struct Metrics {
         return {{"stage", stage}, {"end_reason", reason}, {"error", error}, {"elapsed_s", now},
             {"model_reused", model_reused},
             {"load_s", load_start < 0 ? json(nullptr) : json((load_end >= 0 ? load_end : now) - load_start)},
-            {"input_tokens", input_total}, {"input_processed", input_done}, {"input_reused", 0},
+            {"input_tokens", input_total}, {"input_processed", input_done}, {"input_reused", input_reused},
+            {"prefix_cache_status",prefix_cache_status},{"prefix_cache_bytes",prefix_cache_bytes},
+            {"prefix_restore_s",prefix_restore_s},{"prefix_save_s",prefix_save_s},
             {"prefill_batches", prefill_batches}, {"prefill_logits_batches", prefill_logits_batches},
             {"prefill_s", prefill_start < 0 ? json(nullptr) : json(pp)},
             {"prefill_tps", pp > 0 && input_done > 0 ? json(input_done / pp) : json(nullptr)},

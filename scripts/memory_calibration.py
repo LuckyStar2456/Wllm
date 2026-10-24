@@ -8,11 +8,11 @@ from typing import Any
 
 MIB = 1024**2
 CONFIG_KEYS = ("context", "threads", "threads_batch", "batch", "persistent_threadpool", "prefill_last_only",
-               "cpu_weight_repacking", "backend", "cache_k", "cache_v", "recurrent_state", "flash_attention", "context_shift")
+               "cpu_weight_repacking", "backend", "cache_k", "cache_v", "recurrent_state", "flash_attention", "context_shift", "prefix_cache_mib")
 
 
 def config_signature(config: dict[str, Any]) -> str:
-    values = {key: config[key] for key in CONFIG_KEYS}
+    values = {key: config.get(key, 0) if key == "prefix_cache_mib" else config[key] for key in CONFIG_KEYS}
     return hashlib.sha256(json.dumps(values, sort_keys=True, separators=(",", ":")).encode()).hexdigest()
 
 
@@ -21,6 +21,8 @@ def validate_binding(calibration: dict[str, Any], executable_hash: str, model_ha
         raise ValueError("Incomplete/unsupported memory calibration")
     binding = calibration["binding"]
     bound_config = binding["memory_config"]
+    if bound_config.get("prefix_cache_mib", 0):
+        raise ValueError("Prefix cache needs separate resident-session calibration")
     if bound_config.get("backend") != "CPU" or bound_config.get("gpu_layers", 0) != 0:
         raise ValueError("CPU calibration cannot authorize GPU placement")
     if config_signature(bound_config) != binding["config_signature"] or bound_config["context"] != binding["context"]:
@@ -57,6 +59,8 @@ def validate_binding(calibration: dict[str, Any], executable_hash: str, model_ha
 def assess_calibrated(native: dict[str, Any], calibration: dict[str, Any]) -> dict[str, Any]:
     """A full-file-residency estimate plus measured process commit and fixed safety margin."""
     binding = calibration["binding"]
+    if native["config"].get("prefix_cache_mib", 0):
+        raise ValueError("Single-request CPU envelope cannot authorize prefix-cache sessions")
     if native["config"]["backend"] != "CPU" or native["config"].get("gpu_layers", 0) != 0:
         raise ValueError("CPU memory envelope cannot be applied to GPU allocations")
     if native["llama_commit"] != binding["llama_commit"] or native["cpu_build"] != binding["cpu_build"]:

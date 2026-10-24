@@ -1,6 +1,7 @@
 #include "core.h"
 #include "candidate_score.h"
 #include "system_one.h"
+#include "prefix_cache.h"
 #include <limits>
 #include <iostream>
 #include <functional>
@@ -12,6 +13,24 @@ int main() {
     try {
         auto c=Config::parse(json::object());
         require(c.context==16384,"16K default");
+        require(c.prefix_cache_mib==0,"prefix cache disabled by default");
+        require(Config::parse({{"prefix_cache_mib",128}}).prefix_cache_mib==128,"explicit bounded cache");
+        require(throws([]{Config::parse({{"prefix_cache_mib",-1}});}),"negative cache rejected");
+        require(throws([]{Config::parse({{"prefix_cache_mib",4097}});}),"cache budget bounded");
+        require(throws([]{Config::parse({{"prefix_cache_mib",1.5}});}),"fractional cache rejected");
+        require(throws([]{Config::parse({{"prefix_cache_mib",true}});}),"boolean cache rejected");
+        require(throws([]{Config::parse({{"prefix_cache_mib",64},{"gpu_layers",1}});}),"GPU state cache not implicitly enabled");
+        require(throws([]{Config::parse({{"prefix_cache_mib",64},{"cpu_weight_repacking",true}});}),"unaccepted layout cannot use cache");
+        PrefixCache pc; pc.key="one"; pc.tokens={1,2,3,4}; pc.state={5,6};
+        require(pc.match("one",{1,2,3,4,9},2)==4,"exact token prefix hit");
+        require(pc.match("one",{1,2,8,4,9},2)==0,"changed prefix misses");
+        require(pc.match("other",{1,2,3,4,9},2)==0,"changed identity misses");
+        require(pc.match("one",{1,2,3,4},2)==0,"suffix must be recomputed");
+        require(pc.match("one",{1},2)==0,"shorter prompt cannot restore longer state");
+        require(pc.match("one",{1,2,3,4,9},3)==0,"batch boundaries preserved");
+        require(PrefixCache::checkpoint(128,128)==0 && PrefixCache::checkpoint(129,128)==128 &&
+            PrefixCache::checkpoint(256,128)==128 && PrefixCache::checkpoint(257,128)==256,"last full batch left for fresh logits");
+        pc.clear(); require(pc.bytes()==0 && pc.match("one",{1,2,3,4,9},2)==0,"cache clear releases identity and state");
         require(Config::parse({{"context",4096}}).context==4096,"explicit context override preserved");
         require(c.gpu_layers==0 && c.dump()["backend"]=="CPU","CPU remains default");
         require(Config::parse({{"gpu_layers",2}}).dump()["backend"]=="Vulkan","explicit Vulkan placement recorded");
@@ -46,6 +65,9 @@ int main() {
         require(*m.window_tps(6)==0,"stalled window expires");
         m.prefill_start=1; m.prefill_end=2; m.input_total=100; m.input_done=100;
         require(m.snapshot(5)["prefill_tps"]==100.0,"prefill independent of whole request");
+        m.input_reused=128; m.input_total=228;
+        require(m.snapshot(5)["input_processed"]==100 && m.snapshot(5)["input_reused"]==128 &&
+            m.snapshot(5)["prefill_tps"]==100.0,"cached tokens are not counted as new throughput");
         m.ended=4; m.reason="cancelled";
         require(m.snapshot(9)["elapsed_s"]==4.0,"stopped clock");
         require(m.snapshot(9)["output_tokens"]==4,"partial output retained");

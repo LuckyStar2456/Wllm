@@ -70,7 +70,7 @@ public:
         }
         std::vector<std::string> status={
             "--- " + j.at("stage").get<std::string>() + " | total " + number(j,"elapsed_s") + "s | load " + number(j,"load_s") + "s | reused=" + j.at("model_reused").dump(),
-            "Input " + j.at("input_processed").dump() + "/" + j.at("input_tokens").dump() + " | " + number(j,"prefill_tps") + " tok/s | TTFT " + number(j,"ttft_s") + "s",
+            "Input " + j.at("input_processed").dump() + "/" + j.at("input_tokens").dump() + " reused " + j.at("input_reused").dump() + " | " + number(j,"prefill_tps") + " tok/s | TTFT " + number(j,"ttft_s") + "s",
             "Output " + j.at("output_tokens").dump() + " | live " + number(j,"decode_window_tps") + " | avg " + number(j,"decode_average_tps") + " tok/s",
             "RAM " + number(j,"working_set_bytes",1048576) + " | peak " + number(j,"sampled_peak_working_set_bytes",1048576) + " MiB",
             "Private " + number(j,"private_bytes",1048576) + " | system free " + number(j,"system_available_bytes",1048576) + " MiB",

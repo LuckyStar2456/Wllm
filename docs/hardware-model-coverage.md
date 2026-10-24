@@ -1,5 +1,7 @@
 # Wllm 与 Reflex：硬件、模型覆盖及适配顺序
 
+2026-10-24 实现增量：新增默认关闭的 CPU 单条前缀快照候选；真实恢复/数值/性能未验收，用户选择本轮保留候选。硬件/模型覆盖与优先级没有扩大，Intel GPU 原数值候选仍关闭，未发现 NVIDIA 实卡。详见[报告](../reports/prefix-cache-candidate.md)，下述 2026-10-23 文档范围保留为历史。
+
 更新：2026-10-23。主线按全品类清单建立长期覆盖目标，并以同日用户指定的三档优先级为准；按随后澄清，Reflex 不要求兼容全部模型，只选择具备适用决策能力的模型/任务。两者共用引擎基座、仓库和适配设施，硬件优先级保持。本次只更新计划与设计，没有新增实现、模型、依赖、构建或运行验证。
 
 ## 1. 覆盖目标与状态口径
@@ -29,7 +31,8 @@
 | Windows x86 CPU＋Qwen3.5 文本模型 | 默认 CPU 程序、加载/生成/计量、取消与超时、独立请求权重驻留；当前加载前检查限制为 `qwen35` 文本 GGUF Q4_K_M | 本机 i5-1135G7/16GB、Qwen3.5-9B 的有界运行与回归，见[原型](../reports/prototype-validation.md)、[E2](../reports/e2-validation.md)和[System One 报告](../reports/system-one-validation.md)；不扩大到其他 CPU、其他模型或通用质量结论 |
 | 当前上下文与精度 | 默认 16384、允许显式覆盖；本机基线为 Q4_K_M、F16 注意力 KV/F32 循环状态 | [16K 报告](../reports/context16k-validation.md)包含分配、功能及 4217-token 输入容量样本；完整 16K 长文质量、峰值校准及重复性能未验收。其他模型状态结构/精度另定参照 |
 | Reflex `candidate_score` | CPU 答案位置单 token 标签、完整 logits 读取、候选归一化、无采样/答案生成、独立请求驻留；拒绝 GPU/重排 | [候选报告](../reports/candidate-score-validation.md)记录同前缀完整词表对照、少量任务、隔离及取消检查；不是与完整思考等质量或稳定提速的证明 |
-| Reflex `system_one` | `state + questions` → 具名 `answers`；choice/noul/score 文本协议；逐题独立上下文、复用权重；不接受 ask | [协议报告](../reports/system-one-validation.md)记录功能与生成回归；没有跨题缓存/并行、HTTP、多模态入口、广泛校准或自动思考回退，confidence 不是已校准正确率 |
+| Reflex `system_one` | `state + questions` → 具名 `answers`；choice/noul/score 文本协议；默认逐题独立上下文、复用权重；不接受 ask | [协议报告](../reports/system-one-validation.md)绑定原无缓存路径；2026-10-24 快照候选未验收，不构成跨题共享 state 优化。并行、HTTP、多模态入口、广泛校准及自动回退仍未实现，confidence 不是校准正确率 |
+| CPU 单条前缀快照实验 | 显式预算/键/token 前缀核对、序列状态写读、复用计量，默认关闭 | [本轮报告](../reports/prefix-cache-candidate.md)：原生/工具和缓存关闭数值回归通过；3 项模型缓存尝试未通过，命中 0，恢复/隔离/质量/性能未验收；不外推 GPU |
 | Iris Xe Vulkan | 独立实验构建、显式部分放置及诊断；默认关闭，Reflex 不接受该路径 | [Vulkan 报告](../reports/vulkan-validation.md)及[16K 复核](../reports/context16k-validation.md)的完整词表数值门槛失败；正式 CPU/GPU 性能样本为 0，不标为已验证可用加速 |
 | 资源与内存诊断 | 本机最小资源账本、设备接口归并、CPU 有界峰值诊断与绑定校准的评测准入 | [资源报告](../reports/resource-validation.md)、[内存报告](../reports/memory-backend-validation.md)；不是跨设备自动选后端、通用峰值上界或全硬件探测 |
 | 其余硬件与模型 | 下表均为长期目标／研究候选，Wllm 未完成对应适配 | 上游接口或源代码存在不构成 Wllm 当前实现/验证；现有 CPU 报告不外推到其他组合 |
