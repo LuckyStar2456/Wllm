@@ -1,4 +1,0 @@
-[
-  {"name": "cpu-default-t4", "settings": {"threads": 4, "threads_batch": 4, "batch": 128, "persistent_threadpool": false, "prefill_last_only": false, "cpu_weight_repacking": false}},
-  {"name": "cpu-prefill-t8-candidate", "settings": {"threads": 4, "threads_batch": 8, "batch": 128, "persistent_threadpool": false, "prefill_last_only": false, "cpu_weight_repacking": false}}
-]

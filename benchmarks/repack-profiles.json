@@ -1,4 +1,0 @@
-[
-  {"name": "baseline", "settings": {"cpu_weight_repacking": false}},
-  {"name": "repack", "settings": {"cpu_weight_repacking": true}}
-]

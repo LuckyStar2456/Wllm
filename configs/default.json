@@ -22,5 +22,5 @@
   "refresh_ms": 500,
   "timeout_s": 0,
   "reserve_mib": 1024,
-  "record": "reports/runs.jsonl"
+  "record": ""
 }

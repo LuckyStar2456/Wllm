@@ -1,6 +1,5 @@
-param([int]$Jobs = 4, [ValidateSet('avx2','avx512')][string]$CpuTarget = 'avx2', [string]$BuildDirectory = 'build', [switch]$CpuKernelExperiments)
+param([int]$Jobs = 4, [ValidateSet('avx2','avx512')][string]$CpuTarget = 'avx2', [string]$BuildDirectory = 'build')
 $ErrorActionPreference = 'Stop'
-if ($CpuKernelExperiments -and $CpuTarget -ne 'avx2') { throw 'CPU kernel experiments require the AVX2 baseline' }
 $projectRoot = Split-Path $PSScriptRoot -Parent
 Set-Location -LiteralPath $projectRoot
 $lock = Get-Content dependencies.json -Raw | ConvertFrom-Json
@@ -24,16 +23,8 @@ if (-not (Test-Path -LiteralPath $cmake)) { $cmake = (Get-Command cmake -ErrorAc
 & $cmake -S . -B $BuildDirectory -G 'Visual Studio 17 2022' -A x64 "-DWLLM_CPU_TARGET=$CpuTarget"
 if ($LASTEXITCODE -ne 0) { throw 'Configure failed' }
 $buildTargets = @('wllm', 'wllm-tests')
-if ($CpuKernelExperiments) { $buildTargets += 'wllm-cpu-kernel-bench' }
 & $cmake --build $BuildDirectory --config Release --target @buildTargets --parallel $Jobs
 if ($LASTEXITCODE -ne 0) { throw 'Build failed' }
 $ctest = Join-Path (Split-Path $cmake -Parent) 'ctest.exe'
 & $ctest --test-dir $BuildDirectory -C Release --output-on-failure
 if ($LASTEXITCODE -ne 0) { throw 'Tests failed' }
-if ($CpuKernelExperiments) {
-    New-Item -ItemType Directory -Path reports -Force | Out-Null
-    $kernelSelfTestReport = Join-Path $projectRoot "reports/cpu-kernel-selftest-$([guid]::NewGuid().ToString('N')).json"
-    $kernelExperimentExe = Join-Path $BuildDirectory 'bin/Release/wllm-cpu-kernel-bench.exe'
-    & $kernelExperimentExe --self-test --output $kernelSelfTestReport
-    if ($LASTEXITCODE -ne 0) { throw "CPU kernel numerical self-test failed; see $kernelSelfTestReport" }
-}

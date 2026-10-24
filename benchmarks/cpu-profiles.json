@@ -1,6 +1,0 @@
-[
-  {"name": "legacy", "settings": {"threads": 4, "threads_batch": 4, "batch": 128, "persistent_threadpool": false, "prefill_last_only": false}},
-  {"name": "pool", "settings": {"threads": 4, "threads_batch": 4, "batch": 128, "persistent_threadpool": true, "prefill_last_only": false}},
-  {"name": "last-logits", "settings": {"threads": 4, "threads_batch": 4, "batch": 128, "persistent_threadpool": false, "prefill_last_only": true}},
-  {"name": "combined", "settings": {"threads": 4, "threads_batch": 4, "batch": 128, "persistent_threadpool": true, "prefill_last_only": true}}
-]

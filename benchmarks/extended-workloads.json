@@ -1,6 +1,0 @@
-[
-  {"name": "short", "prompt": "Explain why the sky is blue in simple terms.", "max_tokens": 64},
-  {"name": "long", "repeat_text": "The red box contains three apples. The blue box contains five pears. ", "repeat": 224, "prompt": "Summarize the facts stated above.", "max_tokens": 16},
-  {"name": "long-output", "prompt": "Write a detailed 1200-word explanation of how a computer executes a program, covering the CPU, memory, storage, operating system and an example. Explain each part step by step.", "max_tokens": 128},
-  {"name": "long-retrieval", "prefix": "Archive record: the access code for the green locker is 7319.\n", "repeat_text": "The red box contains three apples. The blue box contains five pears. ", "repeat": 224, "prompt": "\nUsing the archive record at the beginning, what is the access code for the green locker? Answer with the four digits only.", "max_tokens": 512, "end_reason": "eos", "expected_answer": "7319"}
-]

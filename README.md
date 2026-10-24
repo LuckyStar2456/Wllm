@@ -1,103 +1,86 @@
 # Wllm
 
-Wllm 是独立的本地模型推理优化项目，正式名称为 **Wllm**。
+![W-LLM](assets/banner.png)
 
-**完整路线与进展从[总体计划汇总报告](docs/master-plan-report.md)开始阅读。** 报告统一整理原性能优化、Reflex、容量扩展、适配优先级、当前证据与交付关口；适配清单不替代原来的执行/状态/算子/推测优化路线。
+**Windows 本地文本推理与 Reflex 快速决策工具。** C++ 实现，基于 llama.cpp/ggml；提供纯终端界面和可供脚本调用的 CLI，使用 CPU 即可运行。
 
-2026-10-24 后续 CPU 工作：完成[低内存算子筛选](reports/cpu-kernel-validation.md)，126 组小矩阵及 18 个实际权重算子用例数值通过，进程峰值约 102MiB。两列解包原型与线程调整未显示可采用的稳定收益，默认执行和模型精度/16K/思考/采样不变；输入 8 线程仅保留后续 profile，未宣称整模型提速。[实验说明](docs/cpu-kernel-experiments.md)提供独立构建和复现入口。
+[下载 Windows x64 版](https://github.com/LuckyStar2456/Wllm/releases/latest) · [使用说明](guides/windows.md) · [Reflex 协议](guides/reflex.md) · [贡献指南](CONTRIBUTING.md)
 
-2026-10-24 性能推进：新增默认关闭的 CPU 有界前缀快照实验候选，普通生成与 Reflex 可显式选择；构建/工具及缓存关闭路径的有界回归通过，真实缓存恢复与性能因内存不足未验收。用户选择保留默认关闭候选；正式性能准入拒绝、样本为 0，Intel GPU 原数值候选仍关闭，NVIDIA 无实机证据。使用范围及失败记录见[本轮报告](reports/prefix-cache-candidate.md)。
+## 功能
 
-**Reflex（反射决策）是 Wllm 内的候选决策模式。** 普通生成与 Reflex 在同一仓库、同一推理引擎基座上演进，共用模型加载、后端执行、资源管理和计量；各自的模板、输出语义与质量/性能分别验收。项目目录统一为 `C:\Users\97554\Desktop\Wllm`。现有运行参数继续使用 `generate`、`system_one` 和 `candidate_score`，Reflex 是模式名称。
+- **纯终端界面**：蓝色实心大字、深蓝阴影，沿用终端背景；原生滚动输出、窄窗口紧凑标题、无颜色模式。
+- **输入编辑**：中文、光标移动、多行输入与粘贴、当前进程输入历史。
+- **本地生成**：流式文本输出、system 提示词、思考开关、上下文及采样设置。
+- **Reflex**：单 token 候选打分与拒答；System One 的 `state/questions/answers`，支持 choice、noul、score。
+- **模型管理**：选择本地 GGUF、加载与释放、连续请求复用权重。
+- **运行计量**：加载、输入处理、首 token/决策耗时、生成速率、token 数及内存摘要。
+- **交互控制**：参数查看与修改、Ctrl+C 取消、超时、错误后继续操作、显式结果导出。
+- **脚本集成**：文本/JSON 输出、文件输入、stdout/stderr 分离、明确退出码。
 
-创建日期：2026-10-07。文档更新：2026-10-24，运行实现仍为现有 0.2。主线以全品类硬件、全品类模型为长期目标；Reflex 共用硬件与基座，仅选择适用决策的模型/任务，不要求兼容全部模型，纯生图/生视频/音频合成不纳入常规兼容。[覆盖清单与适配顺序](docs/hardware-model-coverage.md)分别记录目标、当前实现和报告绑定的验证。2026-10-23 覆盖清单轮仅改文档；2026-10-24 的实现/实验范围见上文。当前已实现首批 CPU 基础优化与对照工具、权重驻留独立请求及 CPU Reflex；结果与限制见 [E2 报告](reports/e2-validation.md)、[协议报告](reports/system-one-validation.md)，首版记录保留于[原型报告](reports/prototype-validation.md)。
+## 快速开始
 
-适配按用户指定三档推进：**P1** 硬件为 x86 CPU/Intel GPU/NVIDIA GPU，主线模型为通用 Dense/MoE/推理/代码；**P2** 硬件为 PC NPU/内存与存储/多设备协同，主线模型为图文/OCR/文档、视频理解、语音/音频、全模态、图像/视频/音频生成及视觉/其他任务；其余 **P3** 后期完善。Reflex 只从中选适用子集并沿用档位。优先级不等于已支持。当前可用验证范围仍是本机 Windows CPU 与 Qwen3.5 文本 Q4_K_M；Iris Xe Vulkan 实验数值门槛未通过，不宣称跨硬件兼容或加速。
-
-2026-10-21 推进最小资源账本与评测准入：新增不执行模型的资源探测、共享容量说明、Vulkan UUID/DXGI LUID 接口归并、F32 循环状态预算，以及逐次评测资源检查；聊天、代码和长文三类负载已准备。新增参考项目仍属研究项。当前内存余量未满足保守性能预算，未开展正式性能跑分或 GPU 模型验收，见[资源与基线准备报告](reports/resource-validation.md)。
-
-后续一轮增加可关闭的阶段/算子剖析，并扩展长输入、长输出与事实提取测试。默认执行配置保持不变；候选的采用与拒绝依据见[剖析与长输入报告](reports/e2-followup.md)。
-
-2026-10-17 仅修订计划与设计：纠正注意力 KV F16 / 循环状态 F32 的精度口径，明确派生文本文件排除 MTP 辅助头，提前最小资源与后端能力核实，并补充 SSD 容量/速度边界及查表研究决策。CPU/核显协同、前缀复用、MTP 和 SSD 分层仍是待适配候选；本次没有新增推理或加速结果。已验证结果、研究候选与有假设的性能预期分别记录，见[实施计划](docs/implementation-plan.md#11-本次修订的证据边界2026-10-17)。
-
-## 运行首版
-
-首次克隆请先按[使用说明](docs/quickstart.md)构建程序、准备模型并生成本机配置，再执行：
+解压 Windows x64 发布包，在 PowerShell 或 CMD 中执行：
 
 ```powershell
-./scripts/run.ps1 -Prompt '用中文解释什么是推理引擎。'
-./scripts/run.ps1 -Context 8192 -Prompt '你好'
-./scripts/run.ps1 -Interactive
-./scripts/run.ps1 -Mode system_one -RequestFile configs/system-one.example.json
-./scripts/run.ps1 -Mode system_one -Interactive
-./scripts/run.ps1 -Mode candidate_score -CandidatesFile configs/light-switch.candidates.json -Prompt '请把客厅的灯打开'
+.\wllm.exe --tui --model "D:\Models\qwen3.5-9b-q4_k_m-text.gguf"
 ```
 
-默认上下文 **16384（16K）**，按用户 2026-10-21 最新要求从 4K 扩展，支持自行调整；资源不足时明确报错，不自动缩短。历史 4K 的校准和性能结论不自动沿用。仓库提供源码，不包含模型、本机配置及可执行文件。准备和构建、参数、实时指标、取消及记录方式见[使用说明](docs/quickstart.md)。
-
-16K 配置、实际分配与超过旧 4K 边界的计算检查见[上下文扩展报告](reports/context16k-validation.md)；它不代表完整 16K 长文质量或重复性能已经验收。
-
-## 项目目标
-
-**最终目标：在不同硬件配置上，包括低内存、低算力、仅 CPU 等弱硬件，依据实际资源和用户需求匹配合适的推理策略，在约束内持续寻优。** 本机专项优化是第一阶段验证场景；长期能力需要覆盖硬件识别、需求约束、策略选择、实际计量与调优。弱硬件属于目标覆盖范围，各硬件组合的支持与收益须逐项实现、验证。
-
-首先围绕本机 Windows、Intel Core i5-1135G7、16GB 内存和 Iris Xe 核显，专项提高现有 Qwen3.5 的推理性能。模型启动、输入处理与首字等待、持续生成、整次回答耗时均需关注；后续再扩展模型和硬件兼容性。
-
-默认优化基线固定为现有 Qwen3.5 GGUF Q4_K_M，保持主文本权重、用户选择的上下文预算及推理设置，不通过缩短上下文、降低精度、关闭思考或更换小模型来冒充引擎加速。首版对原 Ollama GGUF 做文本容器适配，427 个保留主文本张量经逐字节哈希验证不变；视觉相关张量及 MTP 辅助预测头被排除，不代表保留全部原始能力，原文件只读保留。默认思考开启。这里的保真参照是现有 Q4_K_M，不声称等同未经量化的原始模型。
-
-长期提供由用户选择的速度优先、大模型优先和中间档位。这里的“模型大小”指**模型参数量**，不等于权重文件大小或内存占用。不同精度是独立的可选维度；实际质量需要另外评测。寻求速度与可运行参数规模同时改善的方案，但不预设存在绝对双项最优配置。
-
-“最优”由用户目标、硬件资源和实际工作负载共同决定，在可行且经过验证的候选中选择并持续改进。资源无法满足硬约束时说明原因，给出需要用户选择的替代方案；不静默换模型、降低精度或缩短上下文，也不承诺任意弱硬件能运行任意模型。
-
-## 技术路线
-
-已确认 **B：复用基础能力，逐步深入调度、内存和热点算子优化**。以 llama.cpp/ggml 为推荐基础，**首期优先交付一版可运行的文本推理原型**，打通一个可用后端并保持现有模型与设置。原型之后按基础优化、热点专项优化、容量与用户档位、兼容扩展分级推进，每轮交付可运行版本。A 类调优用于建立性能参照；C 类核心自研留作有明确收益依据的局部替换。
-
-**从首版原型起提供可用的数值计量显示**：运行中显示阶段、耗时、token 数、输入/生成速度和内存，结束或中止后提供汇总及可保存记录。首版可采用终端显示；详细指标与计算口径见[原型验收计划](docs/implementation-plan.md)。
-
-按执行后端、算子、推测解码、状态缓存、内存分层等方向并列研究已有引擎和最新论文；用户提到的项目作为检索入口，不赋予额外优先级。研究为迭代提供候选，不要求全部研究或比较完成才交付原型。是否采用其实现，由本机兼容性、正确性、性能和维护成本决定。CPU、Vulkan、SYCL 及 OpenVINO 等候选逐项筛选，不预设哪一个最快。
-
-## 当前范围
-
-- 2026-10-22 新增 [JEV System One 文本协议适配](docs/system-one-protocol.md)：直接提交 `state + questions`，返回具名 `answers`，支持 choice/noul/score，自动映射内部标签。只接受 questions，不接受 ask；实际执行本地 Qwen，不调用远程 JEV。多题串行、独立状态、复用权重；本机验证与限制见[适配报告](reports/system-one-validation.md)。
-- 2026-10-22 按最新优先级实现[候选打分快速决策模式](docs/candidate-score-mode.md)（System 1 分支）的 CPU 显式首版：处理输入后比较单 token 标签 logits，输出 JSON 选择或 unknown 拒答并结束，不生成文本 token；有界证据见[验收报告](reports/candidate-score-validation.md)。自动思考回退/多 token 评分未实现，广泛质量与稳定加速仍待验收，普通生成默认不变。
-- E0/E1 已完成，E2 首批提供模型加载复用、CPU 执行控制和对照工具；后续优化仍按级推进。
-- 已增加 CPU 实际内存诊断与绑定模型/构建/配置的校准准入；独立 Vulkan 构建完成了 Iris Xe 两层放置的小输入运行探测，完整 GPU 数值与性能验收仍待完成。见[本轮报告](reports/memory-backend-validation.md)。
-- 后续 4K 同条件 CPU/Vulkan 数值筛选未通过：生成 token 相同但完整词表 logits 超出既有门槛，未开展正式性能比较，实验入口不作为默认优化。见[Vulkan 正确性报告](reports/vulkan-validation.md)。
-- 第一阶段已确定为 Qwen3.5 文本推理；视觉等能力后续扩展并独立验收。
-- 本机与当前模型继续补证和优化，同时按用户 P1 类别推进有限代表适配；新组合分别验收，不要求等所有本机研究完成后再扩展。
-- wgp 是未来可选接入方，不构成当前阶段的依赖或验收条件。
-- 训练、剪枝、蒸馏、游戏业务逻辑和多机服务均不属于当前实施范围。
-
-## 文档
-
-- [总体计划与进展汇总报告](docs/master-plan-report.md)：性能主线、Reflex、容量、覆盖、策略选择、完整任务账及近期依赖的统一入口。
-- [项目目标与决策](docs/project-goals.md)：用户已确认内容、A/B/C 比较、边界和待决事项。
-- [架构设计](docs/architecture.md)：执行、状态、资源、配置与扩展边界。
-- [System One 文本请求](docs/system-one-protocol.md)：state/questions/answers 格式、题型、使用入口与本地执行边界。
-- [候选打分快速决策模式](docs/candidate-score-mode.md)：CPU 显式首版运行、输入输出与计量；独立质量边界及后续回退设计。
-- [Reflex 参考研究](docs/reflex-research.md)：LLM2Jev、SemIf 等固定版本对照，后续策略、完整状态复用、调度、校准及最小验收；本轮仅文档研究。
-- [实施与评测路线](docs/implementation-plan.md)：原型验收、计量口径，以及 E2–E5 逐项任务、参考项目/机制、前置条件与验收；含大模型和弱硬件策略。
-- [原型使用说明](docs/quickstart.md)：构建、模型适配、运行、上下文与指标。
-- [CPU 基础优化](docs/cpu-optimization.md)：分阶段线程、执行开关、可重复的对照与正确性检查。
-- [本机验收报告](reports/prototype-validation.md)：已验证内容、数据及限制。
-- [推理优化参考研究](docs/engine-references.md)：按统一标准比较执行、推测解码、状态缓存、内存与调优方向的研究及项目。
-
-## 目录规划
+也可直接启动 `wllm.exe`，进入界面后使用 `/model PATH` 选择模型。输入文本并回车开始推理，`/help` 查看命令。
 
 ```text
-README.md                  已有：项目入口
-docs/                      已有：目标、架构、计划与研究
-src/                       已有：C++ 执行、配置、计量与终端入口
-backends/                  待实现：后端适配与必要的局部优化
-configs/                   已有：默认配置与本机配置
-scripts/                   已有：构建、模型适配与运行入口
-benchmarks/                已有：CPU 候选配置与可复现工作负载
-tests/                     已有：计量/配置测试与本机集成验证
-reports/                   已有：适配校验、本机验收与原始记录
-build/                     已有：本机 CPU 构建产物
-models/                    本地生成：未重量化的文本 GGUF 容器
-vendor/                    本地依赖：固定提交的 llama.cpp
+/model D:\Models\qwen3.5-9b-q4_k_m-text.gguf
+/load
+/set threads 4
+用中文解释质数。
+/mode system_one
+/run configs/system-one.example.json
+/unload
+/exit
 ```
 
-未实现路径仅为规划，目录中的本机构建产物与原始记录不会随仓库分发。原模型按外部路径和摘要引用；本地派生模型、依赖和构建产物均被 .gitignore 排除。独立项目仓库为 [LuckyStar2456/Wllm](https://github.com/LuckyStar2456/Wllm)；源码依赖已锁定，服务协议仍在后续范围。
+CLI 单次调用：
+
+```powershell
+.\wllm.exe --model "D:\Models\model.gguf" --prompt "你好"
+.\wllm.exe --model "D:\Models\model.gguf" --mode system_one --request-file configs/system-one.example.json
+```
+
+模型文件由使用者提供，当前模型入口为 **Qwen3.5 Q4_K_M 文本 GGUF**。CPU 发行包面向 Windows x64、AVX2 指令集。默认上下文 16384、思考开启；模型精度、上下文及推理参数由使用者明确选择。
+
+## 无状态交付
+
+- 解压后运行，模型路径通过参数或界面指定。
+- 默认不写日志、配置或输入历史，不自动读取本机配置。
+- 请求之间共享已加载权重，每次请求独立建立上下文；历史输入不自动发给模型。
+- `/export FILE`、`--record FILE` 显式保存结果或指标，`--config FILE` 显式读取配置。
+- 发布包只包含程序、通用示例、使用文档、品牌资源与依赖许可证。
+
+## 测试配置
+
+本版在 **Windows 11 x64、Intel Core i5-1135G7、16GB RAM、CPU AVX2** 配置上测试。
+
+| 检查 | 配置与内容 |
+|---|---|
+| 原生测试 | 配置校验、计量、候选打分、System One 请求与回答映射 |
+| CLI | 空目录启动、无默认状态文件、显式配置/记录、Unicode 路径、JSON 输出、重定向 |
+| 终端 | Windows ConPTY，PowerShell/CMD，38/48/80/100 列；横幅、编辑、粘贴、历史、缩放和退出恢复 |
+| 模型 | Qwen3.5-9B Q4_K_M 文本 GGUF，约 5.15 GiB；16K 配置、文本生成、Reflex、权重复用与独立请求 |
+
+## 从源码构建
+
+安装 Git、Visual Studio 2022 C++ 桌面开发工具及 CMake 3.24+：
+
+```powershell
+git clone https://github.com/LuckyStar2456/Wllm.git
+cd Wllm
+.\scripts\build.ps1 -BuildDirectory build/public
+.\build\public\bin\Release\wllm.exe --tui
+```
+
+依赖版本锁定于 `dependencies.json`。测试与打包方法见 [CONTRIBUTING.md](CONTRIBUTING.md)，具体命令和输入操作见[使用说明](guides/windows.md)。
+
+## 开源与致谢
+
+Wllm 使用 [MIT](LICENSE) 许可证。推理引擎复用 [llama.cpp/ggml](https://github.com/ggml-org/llama.cpp)，JSON 使用 nlohmann/json；依赖说明见 [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md)。模型遵循各自许可证。
+
+终端命令与用户文档组织参考 [OpenCode](https://opencode.ai/docs/tui/)、[Ollama](https://github.com/ollama/ollama)，启动横幅呈现参考 Spring Boot。

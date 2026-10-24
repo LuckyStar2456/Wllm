@@ -2,6 +2,7 @@
 #include "candidate_score.h"
 #include "system_one.h"
 #include "prefix_cache.h"
+#include "terminal.h"
 #include <limits>
 #include <iostream>
 #include <functional>
@@ -11,6 +12,14 @@ static void require(bool ok,const char * name) { ++checks; if(!ok) throw std::ru
 static bool throws(const std::function<void()> & fn) { try { fn(); return false; } catch(...) { return true; } }
 int main() {
     try {
+        std::string partial="\xe4\xb8";
+        require(console_characters(partial).empty() && partial.size()==2,"partial UTF8 waits for next token");
+        partial+="\xad\xf0\x9f\x98\x80";
+        require(console_characters(partial)==L"\x4e2d\xd83d\xde00" && partial.empty(),"Chinese and surrogate pair console output");
+        partial="\x1b\xc2\x9b";
+        require(console_characters(partial).empty(),"terminal control code points filtered");
+        partial="\xe4";
+        require(console_characters(partial,true)==L"\xfffd" && partial.empty(),"final incomplete character is valid display text");
         auto c=Config::parse(json::object());
         require(c.context==16384,"16K default");
         require(c.prefix_cache_mib==0,"prefix cache disabled by default");

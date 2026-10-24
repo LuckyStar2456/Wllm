@@ -12,7 +12,7 @@ namespace wllm {
 using json = nlohmann::ordered_json;
 
 struct Config {
-    std::string model, record = "reports/runs.jsonl";
+    std::string model, record; // Persistence is opt-in via --record.
     std::string inference_mode = "generate";
     int context = 16384, threads = 4, threads_batch = 0, batch = 128, max_tokens = -1;
     bool persistent_threadpool = false, prefill_last_only = false;

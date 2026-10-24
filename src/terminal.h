@@ -1,91 +1,176 @@
 #pragma once
 #include "core.h"
+#ifndef NOMINMAX
+#define NOMINMAX
+#endif
 #include <windows.h>
+#include <cstdlib>
 #include <iomanip>
 #include <iostream>
 #include <mutex>
 #include <sstream>
 
 namespace wllm {
-// The interactive screen owns both streams while active. Redirected stdout stays raw.
+inline bool console_handle(DWORD stream) {
+    DWORD mode = 0;
+    return GetConsoleMode(GetStdHandle(stream), &mode) != FALSE;
+}
+inline std::wstring wide(const std::string & text) {
+    if (text.empty()) return {};
+    const int count = MultiByteToWideChar(CP_UTF8, MB_ERR_INVALID_CHARS, text.data(), int(text.size()), nullptr, 0);
+    if (!count) throw std::runtime_error("Invalid UTF-8 text");
+    std::wstring result(count, 0);
+    MultiByteToWideChar(CP_UTF8, MB_ERR_INVALID_CHARS, text.data(), int(text.size()), result.data(), count);
+    return result;
+}
+inline std::string utf8(const std::wstring & text) {
+    if (text.empty()) return {};
+    const int count = WideCharToMultiByte(CP_UTF8, 0, text.data(), int(text.size()), nullptr, 0, nullptr, nullptr);
+    std::string result(count, 0);
+    WideCharToMultiByte(CP_UTF8, 0, text.data(), int(text.size()), result.data(), count, nullptr, nullptr);
+    return result;
+}
+inline int console_width() {
+    CONSOLE_SCREEN_BUFFER_INFO info{};
+    return GetConsoleScreenBufferInfo(GetStdHandle(STD_OUTPUT_HANDLE), &info)
+        ? std::max(1, int(info.srWindow.Right - info.srWindow.Left + 1)) : 80;
+}
+inline bool terminal_color() {
+    wchar_t value[2]{};
+    SetLastError(ERROR_SUCCESS);
+    const DWORD length=GetEnvironmentVariableW(L"NO_COLOR",value,2);
+    return length==0 && GetLastError()==ERROR_ENVVAR_NOT_FOUND && console_handle(STD_OUTPUT_HANDLE);
+}
+inline std::string visible_text(const std::string & text) {
+    std::string clean;
+    for (unsigned char c : text) {
+        if (c >= 32 && c != 127) clean += char(c);
+        else if (c == '\n' || c == '\r' || c == '\t') clean += char(c);
+    }
+    return clean;
+}
+// Model tokens may end in the middle of a UTF-8 character. Decode complete
+// characters for the console, retaining the trailing bytes for the next token.
+inline std::wstring console_characters(std::string & pending, bool final = false) {
+    std::wstring out;
+    size_t i=0;
+    while(i<pending.size()) {
+        const auto first=static_cast<unsigned char>(pending[i]);
+        const size_t count=first<0x80?1:first>=0xc2 && first<=0xdf?2:first>=0xe0 && first<=0xef?3:first>=0xf0 && first<=0xf4?4:0;
+        if(count && i+count>pending.size() && !final) break;
+        uint32_t cp=count?first & (count==1?0x7f:count==2?0x1f:count==3?0x0f:0x07):0xfffd;
+        bool valid=count && i+count<=pending.size();
+        if(valid) for(size_t k=1;k<count;++k) {
+            const auto next=static_cast<unsigned char>(pending[i+k]);
+            if((next & 0xc0)!=0x80) valid=false;
+            cp=(cp<<6)|(next & 0x3f);
+        }
+        if(!valid || (count==2 && cp<0x80) || (count==3 && cp<0x800) || (count==4 && cp<0x10000) ||
+            cp>0x10ffff || (cp>=0xd800 && cp<=0xdfff)) { cp=0xfffd; i+=1; }
+        else i+=count;
+        if((cp<32 && cp!='\n' && cp!='\r' && cp!='\t') || (cp>=0x7f && cp<=0x9f)) continue;
+        if(cp<0x10000) out+=wchar_t(cp);
+        else { cp-=0x10000; out+=wchar_t(0xd800+(cp>>10)); out+=wchar_t(0xdc00+(cp & 0x3ff)); }
+    }
+    pending.erase(0,i);
+    return out;
+}
+// Scope host console changes, including early exits and exceptions.
+class ConsoleEnvironment {
+    UINT input_cp = GetConsoleCP(), output_cp = GetConsoleOutputCP();
+    DWORD mode = 0;
+    bool output_console = GetConsoleMode(GetStdHandle(STD_OUTPUT_HANDLE), &mode) != FALSE;
+public:
+    ConsoleEnvironment() {
+        if (input_cp) SetConsoleCP(CP_UTF8);
+        if (output_cp) SetConsoleOutputCP(CP_UTF8);
+        if (output_console) SetConsoleMode(GetStdHandle(STD_OUTPUT_HANDLE), mode | ENABLE_VIRTUAL_TERMINAL_PROCESSING);
+    }
+    ~ConsoleEnvironment() {
+        if (output_console) SetConsoleMode(GetStdHandle(STD_OUTPUT_HANDLE), mode);
+        if (input_cp) SetConsoleCP(input_cp);
+        if (output_cp) SetConsoleOutputCP(output_cp);
+    }
+};
+
+// Scrollback belongs to the user's terminal. No alternate screen or output replay.
 class Terminal {
     std::mutex mutex;
-    std::string generated;
-    bool enabled = false;
-    DWORD original_mode = 0;
-    HANDLE output = GetStdHandle(STD_OUTPUT_HANDLE);
-
+    bool enabled = false, status_line = false, streaming = false;
+    std::wstring original_title;
+    std::string captured;
+    std::string pending_utf8;
+    bool capture = false;
     static std::string number(const json & j, const char * key, double divisor = 1) {
         if (j.at(key).is_null()) return "--";
-        std::ostringstream s; s << std::fixed << std::setprecision(2) << j.at(key).get<double>() / divisor; return s.str();
+        std::ostringstream out;
+        out << std::fixed << std::setprecision(2) << j.at(key).get<double>() / divisor;
+        return out.str();
+    }
+    void clear_status() {
+        if (!status_line) return;
+        if (terminal_color()) std::cerr << "\r\x1b[2K";
+        else std::cerr << '\n';
+        status_line = false;
     }
 public:
     bool active() const { return enabled; }
-    void start(bool quiet) {
-        DWORD error_mode;
-        if (!quiet && GetConsoleMode(output, &original_mode) && GetConsoleMode(GetStdHandle(STD_ERROR_HANDLE), &error_mode) &&
-            SetConsoleMode(output, original_mode | ENABLE_VIRTUAL_TERMINAL_PROCESSING)) {
-            enabled = true;
-            std::cout << "\x1b[?1049h\x1b[?25l" << std::flush;
+    const std::string & text() const { return captured; }
+    void start(bool quiet, bool retain_output = false) {
+        capture=retain_output;
+        enabled = !quiet && console_handle(STD_OUTPUT_HANDLE) && console_handle(STD_ERROR_HANDLE);
+        if (enabled) {
+            wchar_t title[32768]{};
+            const auto n = GetConsoleTitleW(title, DWORD(std::size(title)));
+            original_title.assign(title, n);
         }
     }
     void write(const std::string & piece) {
-        if (enabled) { std::lock_guard<std::mutex> lock(mutex); generated += piece; }
-        else { std::cout.write(piece.data(), piece.size()); std::cout.flush(); }
-    }
-    void render(const json & j, int context) {
         std::lock_guard<std::mutex> lock(mutex);
-        CONSOLE_SCREEN_BUFFER_INFO info{};
-        int width=80, height=24;
-        if (GetConsoleScreenBufferInfo(output,&info)) {
-            width=std::max(30,int(info.srWindow.Right-info.srWindow.Left+1));
-            height=std::max(10,int(info.srWindow.Bottom-info.srWindow.Top+1));
+        clear_status();
+        if(capture) captured += piece;
+        streaming = true;
+        if(console_handle(STD_OUTPUT_HANDLE)) {
+            pending_utf8+=piece;
+            const auto chars=console_characters(pending_utf8);
+            std::cout.flush();
+            DWORD written=0;
+            if(!chars.empty() && !WriteConsoleW(GetStdHandle(STD_OUTPUT_HANDLE),chars.data(),DWORD(chars.size()),&written,nullptr))
+                std::cout.setstate(std::ios::badbit);
+        } else std::cout.write(piece.data(), std::streamsize(piece.size()));
+        std::cout.flush();
+    }
+    void render(const json & j, int) {
+        std::lock_guard<std::mutex> lock(mutex);
+        const std::string status = "W-LLM | " + j.at("stage").get<std::string>() + " | input " +
+            j.at("input_processed").dump() + "/" + j.at("input_tokens").dump() +
+            " | output " + j.at("output_tokens").dump() + " | " + number(j,"decode_window_tps") +
+            " tok/s | RAM " + number(j,"working_set_bytes",1048576) + " MiB";
+        SetConsoleTitleW(wide(status).c_str());
+        if (!streaming && terminal_color()) {
+            std::cerr << "\r\x1b[2K" << status.substr(0, size_t(std::max(1, console_width()-1))) << std::flush;
+            status_line = true;
         }
-        std::vector<std::string> lines(1);
-        int column=0;
-        // Wrap UTF-8 text without splitting a code point; hide terminal control sequences.
-        for (size_t i=0;i<generated.size();) {
-            unsigned char first=static_cast<unsigned char>(generated[i]);
-            if(first=='\n') { lines.emplace_back(); column=0; ++i; continue; }
-            if(first<32 || first==127) { ++i; continue; }
-            size_t n=first<128?1:(first&0xE0)==0xC0?2:(first&0xF0)==0xE0?3:4;
-            if(i+n>generated.size()) break;
-            uint32_t cp=first & (n==1?0x7F:n==2?0x1F:n==3?0x0F:0x07);
-            bool valid=true;
-            for(size_t k=1;k<n;++k) { unsigned char b=static_cast<unsigned char>(generated[i+k]); if((b&0xC0)!=0x80) valid=false; cp=(cp<<6)|(b&0x3F); }
-            if(!valid) { ++i; continue; }
-            const int cells=(cp>=0x1100 && (cp<=0x115f || (cp>=0x2e80 && cp<=0xa4cf) || (cp>=0xac00 && cp<=0xd7af) || (cp>=0xf900 && cp<=0xfaff) || cp>=0x1f300))?2:1;
-            if(column+cells>width-1) { lines.emplace_back(); column=0; }
-            lines.back().append(generated,i,n); column+=cells; i+=n;
-        }
-        const int text_rows=height-8;
-        std::ostringstream frame;
-        const std::string title="Wllm 0.2 | CPU Q4_K_M | ctx=" + std::to_string(context) + " | Ctrl+C stop";
-        frame << "\x1b[H\x1b[2K" << title.substr(0,width-1) << "\r\n";
-        size_t begin=lines.size()>size_t(text_rows)?lines.size()-text_rows:0;
-        for(int row=0;row<text_rows;++row) {
-            frame << "\x1b[2K";
-            if(begin+row<lines.size()) frame << lines[begin+row];
-            frame << "\r\n";
-        }
-        std::vector<std::string> status={
-            "--- " + j.at("stage").get<std::string>() + " | total " + number(j,"elapsed_s") + "s | load " + number(j,"load_s") + "s | reused=" + j.at("model_reused").dump(),
-            "Input " + j.at("input_processed").dump() + "/" + j.at("input_tokens").dump() + " reused " + j.at("input_reused").dump() + " | " + number(j,"prefill_tps") + " tok/s | TTFT " + number(j,"ttft_s") + "s",
-            "Output " + j.at("output_tokens").dump() + " | live " + number(j,"decode_window_tps") + " | avg " + number(j,"decode_average_tps") + " tok/s",
-            "RAM " + number(j,"working_set_bytes",1048576) + " | peak " + number(j,"sampled_peak_working_set_bytes",1048576) + " MiB",
-            "Private " + number(j,"private_bytes",1048576) + " | system free " + number(j,"system_available_bytes",1048576) + " MiB",
-            "-- = pending / insufficient samples. Full output retained on exit."};
-        for(auto & line:status) frame << "\x1b[2K" << line.substr(0,width-1) << "\r\n";
-        std::cout << frame.str() << std::flush;
     }
     void finish() {
         std::lock_guard<std::mutex> lock(mutex);
-        if(enabled) {
-            std::cout << "\x1b[?25h\x1b[?1049l" << generated << '\n' << std::flush;
-            SetConsoleMode(output,original_mode);
-            enabled=false;
+        if(!pending_utf8.empty()) {
+            const auto chars=console_characters(pending_utf8,true);
+            DWORD written=0;
+            WriteConsoleW(GetStdHandle(STD_OUTPUT_HANDLE),chars.data(),DWORD(chars.size()),&written,nullptr);
         }
+        if(capture && !captured.empty()) {
+            const int count=MultiByteToWideChar(CP_UTF8,0,captured.data(),int(captured.size()),nullptr,0);
+            std::wstring normalized(count,0);
+            MultiByteToWideChar(CP_UTF8,0,captured.data(),int(captured.size()),normalized.data(),count);
+            captured=utf8(normalized);
+        }
+        if (!enabled) return;
+        clear_status();
+        if (streaming) std::cout << '\n' << std::flush;
+        SetConsoleTitleW(original_title.c_str());
+        enabled = false;
     }
     ~Terminal() { finish(); }
 };
-}
+} // namespace wllm

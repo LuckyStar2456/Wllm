@@ -102,11 +102,6 @@ def prepare(source: Path, output: Path, report: Path) -> None:
         "all_text_tensor_bytes_equal": True, "tensor_sha256": hashes,
         "basis": "https://github.com/ollama/ollama/blob/v0.35.1/llama/compat/llama-ollama-compat.cpp",
     }, indent=2), encoding="utf-8")
-    config_path = ROOT / "configs/local.json"
-    if not config_path.exists():
-        config = json.loads((ROOT / "configs/default.json").read_text(encoding="utf-8"))
-        config["model"] = str(output.resolve())
-        config_path.write_text(json.dumps(config, indent=2), encoding="utf-8")
     print(f"Verified {len(hashes)} unchanged text tensors. Model: {output}", flush=True)
 
 

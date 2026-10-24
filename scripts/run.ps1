@@ -1,4 +1,6 @@
 param(
+    [string]$Model,
+    [switch]$Tui,
     [string]$Prompt,
     [string]$PromptFile,
     [switch]$Interactive,
@@ -16,14 +18,17 @@ param(
     [ValidateRange(0,4096)][int]$PrefixCacheMiB,
     [Alias('Profile')][switch]$ProfileTimings,
     [switch]$ProfileOps,
-    [string]$Config = 'configs/local.json'
+    [string]$Config
 )
 $ErrorActionPreference = 'Stop'
 $projectRoot = Split-Path $PSScriptRoot -Parent
-Set-Location -LiteralPath $projectRoot
-$exe = Join-Path $projectRoot 'build/bin/Release/wllm.exe'
+$exe = Join-Path $projectRoot 'build/public/bin/Release/wllm.exe'
+if (-not (Test-Path -LiteralPath $exe)) { $exe = Join-Path $projectRoot 'build/bin/Release/wllm.exe' }
 if (-not (Test-Path -LiteralPath $exe)) { throw 'Run scripts/build.ps1 first' }
-$params = @('--config', $Config)
+$params = @()
+if ($Config) { $params += @('--config', $Config) }
+if ($Model) { $params += @('--model', $Model) }
+if ($Tui) { $params += '--tui' }
 if ($Interactive) { $params += '--interactive' }
 if ($PSBoundParameters.ContainsKey('Mode')) { $params += @('--mode', $Mode) }
 if ($CandidatesFile) { $params += @('--candidates', $CandidatesFile) }

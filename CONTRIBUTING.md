@@ -1,0 +1,16 @@
+# Contributing
+
+Build with `scripts/build.ps1`, then run the model-free checks:
+
+```powershell
+$env:WLLM_EXE = (Resolve-Path build/public/bin/Release/wllm.exe).Path
+py -3.11 -m unittest discover -s tests -p test_public.py -v
+```
+
+Terminal tests use Windows ConPTY and `pywinpty==2.0.15`. Install the test dependency into an isolated Python environment, then run `test_console.py` in the same way. Real-model checks accept an explicit model path through `WLLM_TEST_MODEL`.
+
+Keep prompts and model contexts isolated across requests. Changes to precision, sampling, context size or inference behavior should be explicit. Include the configuration, model and checks used when reporting results. Exclude machine-specific configurations, model weights, logs and personal notes from commits.
+
+Bug reports should include Wllm version, Windows version, CPU, terminal/shell, command or redacted configuration, and steps to reproduce.
+
+Build a Windows distribution with `scripts/package.ps1`. The package contains an explicit file list, dependency notices and a SHA256 manifest. Git tags matching `v*` run the Windows build/check/package workflow and publish its assets as a GitHub Release.

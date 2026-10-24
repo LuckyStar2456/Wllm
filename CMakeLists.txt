@@ -1,7 +1,16 @@
 cmake_minimum_required(VERSION 3.24)
-project(Wllm VERSION 0.2.0 LANGUAGES C CXX)
+project(Wllm VERSION 0.3.0 LANGUAGES C CXX RC)
 if(NOT WIN32)
   message(FATAL_ERROR "Wllm currently supports Windows only")
+endif()
+set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>")
+if(MSVC)
+  # Keep developer directories out of source-location strings in released binaries.
+  file(TO_NATIVE_PATH "${CMAKE_SOURCE_DIR}" WLLM_SOURCE_NATIVE)
+  add_compile_options(
+    "$<$<COMPILE_LANGUAGE:C,CXX>:/experimental:deterministic>"
+    "$<$<COMPILE_LANGUAGE:C,CXX>:/pathmap:${CMAKE_SOURCE_DIR}=.>"
+    "$<$<COMPILE_LANGUAGE:C,CXX>:/pathmap:${WLLM_SOURCE_NATIVE}=.>")
 endif()
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -34,13 +43,16 @@ set(GGML_CUDA OFF CACHE BOOL "" FORCE)
 set(GGML_VULKAN OFF CACHE BOOL "" FORCE)
 add_subdirectory(vendor/llama.cpp EXCLUDE_FROM_ALL)
 add_subdirectory(vendor/llama.cpp/examples/simple EXCLUDE_FROM_ALL)
-add_executable(wllm src/main.cpp)
+add_executable(wllm src/main.cpp src/wllm.rc)
 target_link_libraries(wllm PRIVATE llama-common)
-target_include_directories(wllm PRIVATE vendor/llama.cpp/vendor vendor/llama.cpp/src)
+if(MSVC)
+  target_link_options(wllm PRIVATE /PDBALTPATH:wllm.pdb)
+endif()
+target_include_directories(wllm PRIVATE assets vendor/llama.cpp/vendor vendor/llama.cpp/src)
 target_compile_definitions(wllm PRIVATE WLLM_LLAMA_COMMIT="f2918cabbffe8abf8e2a90c1c089085fa116c2cf")
 target_compile_definitions(wllm PRIVATE WLLM_CPU_TARGET="${WLLM_CPU_TARGET}" WLLM_AVX512=$<BOOL:${WLLM_AVX512}>)
 if(WIN32)
-  target_link_libraries(wllm PRIVATE psapi dxgi)
+  target_link_libraries(wllm PRIVATE psapi dxgi user32)
 endif()
 if(MSVC)
   target_compile_options(wllm PRIVATE /utf-8 /W4)
@@ -52,17 +64,3 @@ if(MSVC)
   target_compile_options(wllm-tests PRIVATE /utf-8 /W4)
 endif()
 add_test(NAME wllm-core COMMAND wllm-tests)
-
-# Explicit research target: never linked into the inference executable.
-add_executable(wllm-cpu-kernel-bench EXCLUDE_FROM_ALL
-  experiments/cpu_kernel_bench.cpp experiments/q4_pair.cpp)
-target_link_libraries(wllm-cpu-kernel-bench PRIVATE ggml-cpu bcrypt psapi)
-target_include_directories(wllm-cpu-kernel-bench PRIVATE
-  vendor/llama.cpp/vendor vendor/llama.cpp/ggml/src vendor/llama.cpp/ggml/include)
-target_compile_definitions(wllm-cpu-kernel-bench PRIVATE
-  WLLM_LLAMA_COMMIT="f2918cabbffe8abf8e2a90c1c089085fa116c2cf"
-  WLLM_CPU_TARGET="${WLLM_CPU_TARGET}")
-if(MSVC)
-  target_compile_options(wllm-cpu-kernel-bench PRIVATE /utf-8 /W4)
-  set_source_files_properties(experiments/q4_pair.cpp PROPERTIES COMPILE_OPTIONS "/arch:AVX2")
-endif()

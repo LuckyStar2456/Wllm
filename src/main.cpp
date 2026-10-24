@@ -10,6 +10,7 @@
 #include "resources.h"
 #include "profile.h"
 #include "terminal.h"
+#include "console_ui.h"
 #include "llama.h"
 #include "llama-ext.h" // WIP allocation query API, bound to the exact dependencies.json commit.
 #include "gguf.h"
@@ -177,7 +178,7 @@ static void observer(State & s, std::ofstream & records, const std::string & id,
             if (s.terminal.active()) s.terminal.render(snapshot, s.config.context);
             else display(snapshot);
         }
-        if (records) { records << json({{"event","sample"},{"request_id",id},{"metrics",snapshot}}).dump() << '\n'; records.flush(); }
+        if (records.is_open()) { records << json({{"event","sample"},{"request_id",id},{"metrics",snapshot}}).dump() << '\n'; records.flush(); }
         lock.lock();
         s.wake.wait_for(lock, std::chrono::milliseconds(s.config.refresh_ms), [&] { return s.finished; });
     }
@@ -187,7 +188,7 @@ static bool abort_callback(void * data) { return static_cast<State *>(data)->can
 static bool load_progress(float, void * data) { return !abort_callback(data); }
 static void llama_log(ggml_log_level level, const char * text, void * data) {
     // Keep backend diagnostics separate from generated text and live metrics.
-    if (data && level != GGML_LOG_LEVEL_DEBUG) { std::fputs(text, static_cast<FILE *>(data)); std::fflush(static_cast<FILE *>(data)); }
+    if (level >= GGML_LOG_LEVEL_WARN) { std::fputs(text, data ? static_cast<FILE *>(data) : stderr); std::fflush(data ? static_cast<FILE *>(data) : stderr); }
 }
 
 static uint64_t meta_u32(const gguf_context * meta, const std::string & name) {
@@ -462,7 +463,7 @@ static std::string run(State & s, const std::string & prompt, const std::string 
     if (!model) model.reset(llama_model_load_from_file(c.model.c_str(),mp));
     if (!model) {
         if (s.cancelled()) return s.timed_out ? "timeout" : "cancelled";
-        throw std::runtime_error("Model load failed; see reports/backend.log");
+        throw std::runtime_error("Model load failed; check the GGUF path, format and available memory");
     }
     const llama_vocab * vocab=llama_model_get_vocab(model.get());
     CandidateTask mapped_task;
@@ -645,8 +646,9 @@ static std::string run(State & s, const std::string & prompt, const std::string 
 }
 
 static void usage() {
-    std::cout << "Wllm 0.2.0 - local Qwen3.5 Q4_K_M text inference\n"
+    std::cout << "Wllm 0.3.0 - local CPU inference and Reflex decisions\n"
         "  wllm --config configs/local.json --prompt \"Hello\"\n"
+        "  --tui (terminal interface) --ascii (compact banner) --version\n"
         "  --model PATH --context N (default 16384) --threads N --batch N\n"
         "  --threads-batch N (0 = threads) --persistent-threadpool on|off\n"
         "  --prefill-last-only on|off (skip unused intermediate logits)\n"
@@ -665,26 +667,20 @@ static void usage() {
         "  --resources PATH (write resource/CPU budget report; no inference or prompt read)\n"
         "  --memory-diagnostic (allocation/OS peaks; excluded from performance benchmarks)\n"
         "  --gpu-layers N (experimental Vulkan validation build only; default 0)\n"
-        "Metrics: stderr + JSONL; generated text: stdout. Ctrl+C cancels.\n";
+        "Metrics: stderr; --record explicitly enables JSONL. Text/decisions: stdout.\n"
+        "Requests are independent. No automatic configuration or history files.\n";
 }
 
 class BackendRuntime {
-    std::unique_ptr<FILE,decltype(&std::fclose)> log{nullptr,std::fclose};
 public:
-    BackendRuntime() {
-        fs::create_directories("reports");
-        log.reset(std::fopen("reports/backend.log","a"));
-        if (!log) throw std::runtime_error("Cannot open backend log");
-        llama_log_set(llama_log,log.get());
-        llama_backend_init();
-    }
+    BackendRuntime() { llama_log_set(llama_log,nullptr); llama_backend_init(); }
     ~BackendRuntime() { llama_backend_free(); llama_log_set(nullptr,nullptr); }
 };
 
 static int execute_request(const Config & config, const std::string & prompt, const std::string & system,
         const std::string & inspect, const std::string & logits_file, const std::string & cancel_file,
         bool quiet, bool profile, bool profile_ops, bool memory_diagnostic, ModelPtr * resident, const CandidateTask * task,
-        bool emit_decision=true, json * decision_out=nullptr, PrefixCache * cache=nullptr) {
+        bool emit_decision=true, json * decision_out=nullptr, PrefixCache * cache=nullptr, json * presentation=nullptr) {
     State state; state.config=config; state.cancel_file=cancel_file;
     state.metrics.prefix_cache_status=config.prefix_cache_mib?"not_started":"disabled";
     PrefixCache pending;
@@ -694,12 +690,15 @@ static int execute_request(const Config & config, const std::string & prompt, co
     if(!inspect.empty() && !logits_file.empty()) throw std::runtime_error("--inspect cannot be combined with --logits-file");
     if(!cancel_file.empty() && fs::exists(fs::u8path(cancel_file))) throw std::runtime_error("Cancel file already exists; use a new path");
     state.start=Clock::now();
-    fs::create_directories("reports");
-    if(!state.config.record.empty() && fs::u8path(state.config.record).has_parent_path()) fs::create_directories(fs::u8path(state.config.record).parent_path());
-    std::ofstream record(fs::u8path(state.config.record),std::ios::app|std::ios::binary);
-    if(!record) throw std::runtime_error("Cannot open metric record file");
+    std::ofstream record;
+    if (!state.config.record.empty()) {
+        const auto path=fs::u8path(state.config.record);
+        if(path.has_parent_path()) fs::create_directories(path.parent_path());
+        record.open(path,std::ios::app|std::ios::binary);
+        if(!record) throw std::runtime_error("Cannot open metric record file");
+    }
     const std::string id=std::to_string(std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::system_clock::now().time_since_epoch()).count())+"-"+std::to_string(GetCurrentProcessId());
-    record << json({{"event","start"},{"schema_version",1},{"request_id",id},{"config",state.config.dump()},
+    if (record.is_open()) record << json({{"event","start"},{"schema_version",1},{"request_id",id},{"config",state.config.dump()},
         {"candidate_task",task?task->manifest():json(nullptr)},
         {"logits_diagnostic",!logits_file.empty()},
         {"memory_diagnostic",memory_diagnostic},
@@ -723,7 +722,7 @@ static int execute_request(const Config & config, const std::string & prompt, co
     if (state.config.prefix_cache_mib)
         std::cerr << "[Wllm] Experimental CPU prefix cache: explicit budget, separate numerical/session performance acceptance required.\n";
     // A decision is one JSON line, including on a real console; never place it in the alternate screen.
-    state.terminal.start(quiet || task!=nullptr);
+    state.terminal.start(quiet || task!=nullptr, presentation!=nullptr);
     std::thread monitor(observer,std::ref(state),std::ref(record),std::cref(id),quiet);
     std::string reason;
     try { reason=run(state,prompt,system,inspect,logits_file,resident,task,cache,pending); }
@@ -756,14 +755,17 @@ static int execute_request(const Config & config, const std::string & prompt, co
         if (profile_ops) std::cerr << "  Operator callbacks split/synchronize the graph; details in JSONL end.profile.operators\n";
     }
     if(!state.metrics.error.empty()) std::cerr << "[Wllm] " << state.metrics.error << '\n';
-    record << json({{"event","end"},{"request_id",id},{"metrics",final},{"identity",state.identity},
+    if (record.is_open()) record << json({{"event","end"},{"request_id",id},{"metrics",final},{"identity",state.identity},
         {"decision",state.decision},
         {"profile",profile_result},
         {"token_times_s",state.metrics.token_times},{"token_ids",state.metrics.token_ids},
         {"load_start_s",state.metrics.load_start},{"load_end_s",state.metrics.load_end},
         {"prefill_start_s",state.metrics.prefill_start},{"prefill_end_s",state.metrics.prefill_end}}).dump() << '\n';
-    record.flush();
-    if(!record) { std::cerr << "Metric record write failed\n"; return 1; }
+    if (record.is_open()) {
+        record.flush();
+        if(!record) { std::cerr << "Metric record write failed\n"; return 1; }
+    }
+    if (presentation) *presentation={{"mode",config.inference_mode},{"metrics",final},{"output",state.terminal.text()},{"decision",state.decision}};
     if (decision_out) *decision_out=state.decision;
     if (task && inspect.empty() && emit_decision) {
         std::cout << state.decision.dump() << '\n' << std::flush;
@@ -775,7 +777,7 @@ static int execute_request(const Config & config, const std::string & prompt, co
 }
 
 static int execute_system_one(const Config & config, const std::string & body, const std::string & cancel_file,
-        bool quiet, bool profile, bool profile_ops, bool memory_diagnostic, ModelPtr & resident, PrefixCache * cache) {
+        bool quiet, bool profile, bool profile_ops, bool memory_diagnostic, ModelPtr & resident, PrefixCache * cache, json * response_out=nullptr) {
     const auto started=Clock::now();
     const auto elapsed=[&] { return std::chrono::duration<double>(Clock::now()-started).count(); };
     const std::string id="systemone-"+std::to_string(std::chrono::duration_cast<std::chrono::microseconds>(started.time_since_epoch()).count())+
@@ -840,24 +842,30 @@ static int execute_system_one(const Config & config, const std::string & body, c
     response["_wllm"]["elapsed_s"]=elapsed();
     response["_wllm"]["status"]=code==0?"completed":"failed";
     try {
+        if (!config.record.empty()) {
         const auto path=fs::u8path(config.record);
         if (path.has_parent_path()) fs::create_directories(path.parent_path());
         std::ofstream record(path,std::ios::app|std::ios::binary);
         record << json({{"event","system_one_end"},{"request_id",id},{"response",response}}).dump() << '\n';
         record.flush();
         if (!record) throw std::runtime_error("Cannot write System One result record");
+        }
     } catch (const std::exception & e) {
         code=1; response["answers"]=json::object();
         response["_wllm"]["status"]="failed";
         response["error"]={{"type","record_error"},{"message",e.what()}};
     }
+    if(response_out) *response_out=response;
     std::cout << response.dump() << '\n' << std::flush;
     if (cache && (code!=0 || !std::cout)) cache->clear();
     return std::cout?code:1;
 }
 
+#include "console_app.h"
+
 static int main_utf8(int argc,char ** argv) {
-    SetConsoleOutputCP(CP_UTF8); SetConsoleCP(CP_UTF8);
+    std::ios::sync_with_stdio(false);
+    ConsoleEnvironment console_environment;
     SetConsoleCtrlHandler(console_handler,TRUE);
     std::setlocale(LC_NUMERIC,"C");
     try {
@@ -869,11 +877,15 @@ static int main_utf8(int argc,char ** argv) {
         }
         std::string prompt,system,inspect,cancel_file,logits_file,logits_directory,resources_file,candidates_file,request_file;
         bool prompt_set=false, quiet=false, interactive=false, profile=false, profile_ops=false, memory_diagnostic=false;
+        bool tui=argc==1 && console_handle(STD_INPUT_HANDLE) && console_handle(STD_OUTPUT_HANDLE), ascii=false;
         const std::map<std::string,std::string> ints={{"--context","context"},{"--threads","threads"},{"--threads-batch","threads_batch"},{"--batch","batch"},{"--gpu-layers","gpu_layers"},{"--prefix-cache-mib","prefix_cache_mib"},{"--max-tokens","max_tokens"},{"--seed","seed"}};
         const std::map<std::string,std::string> bools={{"--thinking","thinking"},{"--persistent-threadpool","persistent_threadpool"},{"--prefill-last-only","prefill_last_only"},{"--cpu-weight-repacking","cpu_weight_repacking"}};
         for(int i=1;i<argc;++i) {
             const std::string arg=argv[i];
             if(arg=="--help" || arg=="-h") { usage(); return 0; }
+            if(arg=="--version") { std::cout << "Wllm 0.3.0 / CPU " << WLLM_CPU_TARGET << " / llama.cpp " << WLLM_LLAMA_COMMIT << '\n'; return 0; }
+            if(arg=="--tui") { tui=true; continue; }
+            if(arg=="--ascii") { ascii=true; continue; }
             if(arg=="--quiet-metrics") { quiet=true; continue; }
             if(arg=="--interactive") { interactive=true; continue; }
             if(arg=="--profile") { profile=true; continue; }
@@ -896,10 +908,26 @@ static int main_utf8(int argc,char ** argv) {
             else if(arg=="--request-file") request_file=v;
             else if(bools.count(arg)) { if(v!="on" && v!="off") throw std::runtime_error(arg + " must be on or off"); settings[bools.at(arg)]=v=="on"; }
             else if(ints.count(arg)) { const json n=json::parse(v); if(!n.is_number_integer()) throw std::runtime_error("Expected integer for " + arg); settings[ints.at(arg)]=n; }
-            else if(arg=="--temperature" || arg=="--timeout") { const json n=json::parse(v); if(!n.is_number()) throw std::runtime_error("Expected number"); settings[arg=="--timeout"?"timeout_s":"temperature"]=n; }
+            else if(arg=="--temperature" || arg=="--timeout" || arg=="--top-p" || arg=="--min-p" || arg=="--presence-penalty" || arg=="--frequency-penalty" || arg=="--repeat-penalty") {
+                const json n=json::parse(v); if(!n.is_number()) throw std::runtime_error("Expected number");
+                std::string name=arg.substr(2); std::replace(name.begin(),name.end(),'-','_');
+                settings[name=="timeout"?"timeout_s":name]=n;
+            }
+            else if(arg=="--top-k" || arg=="--repeat-last-n") {
+                const json n=json::parse(v); if(!n.is_number_integer()) throw std::runtime_error("Expected integer");
+                std::string name=arg.substr(2); std::replace(name.begin(),name.end(),'-','_'); settings[name]=n;
+            }
             else throw std::runtime_error("Unknown argument: " + arg);
         }
         const auto config=Config::parse(settings);
+        if (tui) {
+            if (!console_handle(STD_INPUT_HANDLE) || !console_handle(STD_OUTPUT_HANDLE) || !console_handle(STD_ERROR_HANDLE))
+                throw std::runtime_error("--tui requires console input/output; use --interactive or --prompt for pipes");
+            if(prompt_set || interactive || !inspect.empty() || !logits_file.empty() || !logits_directory.empty() || !resources_file.empty() || !cancel_file.empty() || profile || profile_ops || memory_diagnostic)
+                throw std::runtime_error("--tui accepts model/config/mode/candidates/request settings; use the CLI for request or diagnostic options");
+            BackendRuntime backend;
+            return run_console_ui(settings,system,candidates_file,request_file,ascii);
+        }
         const bool system_one=config.inference_mode=="system_one";
         if (!system_one && !request_file.empty()) throw std::runtime_error("--request-file requires --mode system_one");
         if (system_one && (prompt_set || !system.empty() || !inspect.empty() || !logits_file.empty() || !logits_directory.empty() || !candidates_file.empty() || !resources_file.empty()))
@@ -984,11 +1012,13 @@ static int main_utf8(int argc,char ** argv) {
             const auto release_start=Clock::now();
             resident.reset();
             const double release_s=std::chrono::duration<double>(Clock::now()-release_start).count();
+            if (!config.record.empty()) {
             std::ofstream record(fs::u8path(config.record),std::ios::app|std::ios::binary);
             record << json({{"event","session_end"},{"pid",GetCurrentProcessId()},{"model_release_s",release_s},
                 {"prefix_cache_released_bytes",cache_bytes}}).dump() << '\n';
             record.flush();
             if (!record) throw std::runtime_error("Cannot record session release");
+            }
             std::cerr << "[Wllm] Session ended; retained model released in " << release_s << "s\n";
         }
         return interrupted.load() ? 130 : code;

@@ -1,6 +1,0 @@
-[
-  {"name": "t4-b128", "settings": {"threads": 4, "threads_batch": 4, "batch": 128, "persistent_threadpool": true, "prefill_last_only": true}},
-  {"name": "t2-b128", "settings": {"threads": 2, "threads_batch": 4, "batch": 128, "persistent_threadpool": true, "prefill_last_only": true}},
-  {"name": "t4-b256", "settings": {"threads": 4, "threads_batch": 4, "batch": 256, "persistent_threadpool": true, "prefill_last_only": true}},
-  {"name": "t4-p8-b256", "settings": {"threads": 4, "threads_batch": 8, "batch": 256, "persistent_threadpool": true, "prefill_last_only": true}}
-]

@@ -1,4 +1,0 @@
-[
-  {"name": "baseline", "settings": {"prefill_last_only": false, "cpu_weight_repacking": false}},
-  {"name": "last-only", "settings": {"prefill_last_only": true, "cpu_weight_repacking": false}}
-]

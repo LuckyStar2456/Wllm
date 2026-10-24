@@ -1,8 +1,7 @@
-# Third-party dependencies
+# Third-party notices
 
-- llama.cpp / ggml, MIT: https://github.com/ggml-org/llama.cpp . Revision is pinned in `dependencies.json`; full upstream notices remain in `vendor/llama.cpp/LICENSE` and `vendor/llama.cpp/licenses/`.
-- nlohmann/json, MIT, provided by the same pinned tree: `vendor/llama.cpp/vendor/nlohmann/json.hpp`.
-- The offline text-container normalization follows the documented format differences in Ollama v0.35.1: https://github.com/ollama/ollama/blob/v0.35.1/llama/compat/llama-ollama-compat.cpp . No Ollama server is required at runtime.
-- The existing model is supplied by the user. Its original license remains in the Ollama blob store. Preparing a text container does not change its license or ownership.
+- **llama.cpp / ggml** — MIT, https://github.com/ggml-org/llama.cpp . Exact revision: `dependencies.json`. Binary distributions include its license and the notices from the pinned `licenses/` directory.
+- **nlohmann/json** — MIT, distributed in the pinned llama.cpp tree. Its full license is included in `licenses/upstream/LICENSE-jsonhpp` in the Windows package.
+- **Ollama format reference** — the optional offline container adapter follows the format differences in https://github.com/ollama/ollama/blob/v0.35.1/llama/compat/llama-ollama-compat.cpp . It copies retained text tensor bytes into a separate container.
 
-When redistributing a build, include the upstream licenses and notices from the exact pinned dependency tree. Model files are excluded from source control.
+Model weights are supplied separately by the user and retain their own licenses. Wllm binary packages contain no model weights.
