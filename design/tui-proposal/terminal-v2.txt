@@ -1,0 +1,17 @@
+  __        __            _        _        __  __
+  \ \      / /           | |      | |      |  \/  |
+   \ \ /\ / /    _____   | |      | |      | |\/| |
+    \ V  V /    |_____|  | |___   | |___   | |  | |
+     \_/\_/              |_____|  |_____|  |_|  |_|
+
+ :: W-LLM ::  (v0.2.0)
+
+ model     Qwen3.5-9B / Q4_K_M / 5.15 GiB
+ backend   CPU / AVX2 / threads 4:4
+ context   16384 / KV F16 / recurrent F32
+ mode      generate / thinking on / prefix cache off
+ state     unloaded
+
+ input -- tok   output -- tok   speed -- tok/s   RAM -- GiB
+
+ wllm> _
