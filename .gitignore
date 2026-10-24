@@ -23,5 +23,7 @@ __pycache__/
 !/reports/system-one-validation.json
 !/reports/prefix-cache-candidate.md
 !/reports/prefix-cache-candidate.json
+!/reports/cpu-kernel-validation.md
+!/reports/cpu-kernel-validation.json
 /configs/local.json
 *.user

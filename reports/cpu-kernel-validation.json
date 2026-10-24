@@ -1,0 +1,2259 @@
+{
+  "schema_version": 1,
+  "date": "2026-10-24",
+  "base_commit": "0bfb94d3681d6f22c5be031d3ac45fb4a788dd0b",
+  "status": "operator_experiment_completed_no_engine_optimization_adopted",
+  "hardware": {
+    "cpu": {
+      "source": "CPUID/XGETBV/GetLogicalProcessorInformationEx",
+      "brand": "11th Gen Intel(R) Core(TM) i5-1135G7 @ 2.40GHz",
+      "avx2_usable": true,
+      "avx512_f_usable": true,
+      "logical_processors": 8,
+      "physical_cores": 4
+    },
+    "physical_total_bytes": 16859500544
+  },
+  "identity": {
+    "llama_commit": "f2918cabbffe8abf8e2a90c1c089085fa116c2cf",
+    "cpu_build": "avx2",
+    "experiment_executable_sha256": "3e94dc4272ca3044de33948f336662a409604c9e92e46a1944d3f159a2a816e8",
+    "inference_executable_sha256": "0024fb7a410105ce91f41367d20444d11e719938a2c383663069af7e2e58f967",
+    "inference_executable_unchanged_from_prefix_cache_round": true,
+    "weight_identity_scope": "original GGUF selected tensor payload hashes; not a full-model SHA"
+  },
+  "constraints": {
+    "weight_precision": "unchanged Q4_K_M file; this experiment only covers selected Q4_K tensors",
+    "context": 16384,
+    "context_allocated_in_experiment": false,
+    "inference_semantics_changed": false,
+    "engine_defaults_changed": false,
+    "prefix_cache_mib": 0,
+    "reserve_bytes": 1073741824,
+    "experiment_payload_cap_bytes": 268435456
+  },
+  "checks": {
+    "native_core_checks": 96,
+    "native_core_passed": true,
+    "python_tests": 6,
+    "python_tests_passed": true,
+    "synthetic_matrix_cases": 126,
+    "synthetic_matrix_cases_passed": true,
+    "actual_tensor_cases": 18,
+    "actual_tensor_profile_cases": 108,
+    "all_operator_outputs_byte_equal": true,
+    "timed_samples": 972
+  },
+  "initial_failure": {
+    "status": "failed",
+    "completed_cases": 6,
+    "error": "Operator output differs from pinned upstream bytes",
+    "cause_scope": "unscoped vec_dot/custom replacement did not preserve the default tiled path; mismatch was detected in scalar control at 16 columns",
+    "disposition": "candidate restricted to 2..7 columns; 1 and >=8 columns preserve upstream; numeric gate not relaxed"
+  },
+  "design": {
+    "pair_candidate_integrated_into_engine": false,
+    "activation_source": "deterministic synthetic F32, converted with original Q8_K block policy",
+    "upstream_tiled_min_columns": 8,
+    "pair_eligible_columns": [
+      2,
+      3,
+      4,
+      5,
+      6,
+      7
+    ],
+    "thread_sweep": {
+      "pool_capacity": 8,
+      "poll": 50,
+      "active_threads": [
+        1,
+        2,
+        4,
+        8
+      ]
+    },
+    "timing": "warm operator graph including quantization and synchronization; excludes IO/planning/allocation/pool creation/equality",
+    "repeats": 9,
+    "warmups_per_profile": 2,
+    "small_column_invocations_per_sample": 16,
+    "equal_output_scope": "numerical preflight/warmups and final output of each timed sample",
+    "same_implementation_controls": "pair/scalar positions at 1 and >=8 columns invoke unchanged upstream; their differences are timing noise, not improvements",
+    "summary_metadata_note": "Curated no-op controls explicitly mark candidate_applied=false; original timing files are preserved."
+  },
+  "decisions": {
+    "pair_shared_unpack": "not adopted; no stable cross-case benefit",
+    "prefill_threads_8": "explicit future model benchmark profile only; mixed and non-repeatable operator benefits, no default change",
+    "decode_threads": 4,
+    "prefill_threads_default": 4,
+    "model_quality": "not evaluated in this operator experiment",
+    "full_model_numeric_acceptance": "not performed; inference executable unchanged",
+    "end_to_end_speedup": null
+  },
+  "repeatability_example": {
+    "tensor": "blk.0.ssm_out.weight",
+    "columns": 128,
+    "first_screen_t8_latency_ratio": 0.7237661739886463,
+    "final_screen_t8_latency_ratio": 1.3652213346737623,
+    "note": "experiment artifacts differ only in environment guard/report/argument handling; hashes remain distinct, no positive adoption conclusion"
+  },
+  "prior_screen_executable_sha256": "75fb660f96197b641db274f786bd3109b6d1c59ca4c80a0fa88f60646b107054",
+  "resources": {
+    "max_measured_working_set_bytes": 107196416,
+    "max_planned_payload_bytes": 91374144,
+    "formal_model_preflight": {
+      "status": "resource_rejected",
+      "warmups": 0,
+      "samples": 0,
+      "available_physical_bytes": 7447732224,
+      "conservative_physical_budget_bytes": 10415146912,
+      "reasons": [
+        "available_physical_below_conservative_resident_budget"
+      ]
+    }
+  },
+  "cases": [
+    {
+      "tensor": "blk.0.ffn_gate.weight",
+      "tensor_sha256": "2f4d87284dcc860fc5e4e6c7e00660b733739445ccb1c90f55b2b91716fc45dd",
+      "k": 4096,
+      "rows": 12288,
+      "columns": 1,
+      "pair_dispatch": "unchanged_upstream",
+      "output_sha256": "a684b1d8a42f4d098f7d667c767708c7c43d1df0ab175d86b859a8abf827e1ce",
+      "profiles": {
+        "upstream": {
+          "threads": 4,
+          "kind": "operator_profile",
+          "samples": 9,
+          "median_s": 0.0011339125,
+          "min_s": 0.00099286875,
+          "max_s": 0.00419483125,
+          "all_outputs_byte_equal": true
+        },
+        "same_schedule_scalar": {
+          "threads": 4,
+          "kind": "unchanged_upstream_control",
+          "samples": 9,
+          "median_s": 0.0012876625,
+          "min_s": 0.00102328125,
+          "max_s": 0.00282369375,
+          "all_outputs_byte_equal": true
+        },
+        "pair_shared_unpack": {
+          "threads": 4,
+          "kind": "unchanged_upstream_control",
+          "samples": 9,
+          "median_s": 0.0015345875,
+          "min_s": 0.00100265625,
+          "max_s": 0.0066460875,
+          "all_outputs_byte_equal": true
+        },
+        "upstream_t1": {
+          "threads": 1,
+          "kind": "operator_profile",
+          "samples": 9,
+          "median_s": 0.004036975,
+          "min_s": 0.0033514625,
+          "max_s": 0.00533238125,
+          "all_outputs_byte_equal": true
+        },
+        "upstream_t2": {
+          "threads": 2,
+          "kind": "operator_profile",
+          "samples": 9,
+          "median_s": 0.00260524375,
+          "min_s": 0.00196753125,
+          "max_s": 0.00639336875,
+          "all_outputs_byte_equal": true
+        },
+        "upstream_t8": {
+          "threads": 8,
+          "kind": "operator_profile",
+          "samples": 9,
+          "median_s": 0.0018692125,
+          "min_s": 0.0008817375,
+          "max_s": 0.00709290625,
+          "all_outputs_byte_equal": true
+        }
+      },
+      "paired_comparisons": {
+        "same_schedule_scalar": {
+          "kind": "unchanged_upstream_control",
+          "candidate_applied": false,
+          "median_latency_ratio": 0.9750587016193931,
+          "min_latency_ratio": 0.6731364342725348,
+          "max_latency_ratio": 2.1178342055185535,
+          "rounds_better_by_5pct": 4,
+          "rounds_worse_by_5pct": 4,
+          "rounds": 9
+        },
+        "pair_shared_unpack": {
+          "kind": "unchanged_upstream_control",
+          "candidate_applied": false,
+          "median_latency_ratio": 1.353356189300321,
+          "min_latency_ratio": 0.8264134291996841,
+          "max_latency_ratio": 3.066044243577545,
+          "rounds_better_by_5pct": 2,
+          "rounds_worse_by_5pct": 6,
+          "rounds": 9
+        },
+        "upstream_t1": {
+          "kind": "operator_profile",
+          "candidate_applied": true,
+          "median_latency_ratio": 3.3755342788258766,
+          "min_latency_ratio": 1.2169172478630697,
+          "max_latency_ratio": 4.702639092522571,
+          "rounds_better_by_5pct": 0,
+          "rounds_worse_by_5pct": 9,
+          "rounds": 9
+        },
+        "upstream_t2": {
+          "kind": "operator_profile",
+          "candidate_applied": true,
+          "median_latency_ratio": 2.3487063039509573,
+          "min_latency_ratio": 0.4690370441004033,
+          "max_latency_ratio": 6.439288929176187,
+          "rounds_better_by_5pct": 1,
+          "rounds_worse_by_5pct": 8,
+          "rounds": 9
+        },
+        "upstream_t8": {
+          "kind": "operator_profile",
+          "candidate_applied": true,
+          "median_latency_ratio": 1.2266095711151452,
+          "min_latency_ratio": 0.7776062967821592,
+          "max_latency_ratio": 5.548133879729822,
+          "rounds_better_by_5pct": 2,
+          "rounds_worse_by_5pct": 7,
+          "rounds": 9
+        }
+      },
+      "planned_payload_bytes": 63137472,
+      "peak_working_set_bytes": 92028928
+    },
+    {
+      "tensor": "blk.0.ffn_gate.weight",
+      "tensor_sha256": "2f4d87284dcc860fc5e4e6c7e00660b733739445ccb1c90f55b2b91716fc45dd",
+      "k": 4096,
+      "rows": 12288,
+      "columns": 2,
+      "pair_dispatch": "custom_pair",
+      "output_sha256": "20c12ac1952d073d1f6628f0f54f5018ddaa4583ea352ee14d69eadd74b8c9dc",
+      "profiles": {
+        "upstream": {
+          "threads": 4,
+          "kind": "operator_profile",
+          "samples": 9,
+          "median_s": 0.0018072,
+          "min_s": 0.00160248125,
+          "max_s": 0.00449411875,
+          "all_outputs_byte_equal": true
+        },
+        "same_schedule_scalar": {
+          "threads": 4,
+          "kind": "operator_profile",
+          "samples": 9,
+          "median_s": 0.00195189375,
+          "min_s": 0.00169671875,
+          "max_s": 0.004528175,
+          "all_outputs_byte_equal": true
+        },
+        "pair_shared_unpack": {
+          "threads": 4,
+          "kind": "operator_profile",
+          "samples": 9,
+          "median_s": 0.0019628375,
+          "min_s": 0.00138519375,
+          "max_s": 0.0056944875,
+          "all_outputs_byte_equal": true
+        },
+        "upstream_t1": {
+          "threads": 1,
+          "kind": "operator_profile",
+          "samples": 9,
+          "median_s": 0.005691325,
+          "min_s": 0.00536980625,
+          "max_s": 0.00751575625,
+          "all_outputs_byte_equal": true
+        },
+        "upstream_t2": {
+          "threads": 2,
+          "kind": "operator_profile",
+          "samples": 9,
+          "median_s": 0.0030884125,
+          "min_s": 0.00265805,
+          "max_s": 0.00433763125,
+          "all_outputs_byte_equal": true
+        },
+        "upstream_t8": {
+          "threads": 8,
+          "kind": "operator_profile",
+          "samples": 9,
+          "median_s": 0.0014455375,
+          "min_s": 0.00106030625,
+          "max_s": 0.00533033125,
+          "all_outputs_byte_equal": true
+        }
+      },
+      "paired_comparisons": {
+        "same_schedule_scalar": {
+          "kind": "operator_profile",
+          "candidate_applied": true,
+          "median_latency_ratio": 1.0591504850695443,
+          "min_latency_ratio": 0.8771829381437245,
+          "max_latency_ratio": 1.297920546478576,
+          "rounds_better_by_5pct": 2,
+          "rounds_worse_by_5pct": 5,
+          "rounds": 9
+        },
+        "pair_shared_unpack": {
+          "kind": "operator_profile",
+          "candidate_applied": true,
+          "median_latency_ratio": 1.139168978818434,
+          "min_latency_ratio": 0.6323959508190566,
+          "max_latency_ratio": 3.104923273003616,
+          "rounds_better_by_5pct": 3,
+          "rounds_worse_by_5pct": 5,
+          "rounds": 9
+        },
+        "upstream_t1": {
+          "kind": "operator_profile",
+          "candidate_applied": true,
+          "median_latency_ratio": 3.3491311572789546,
+          "min_latency_ratio": 1.4196095174387637,
+          "max_latency_ratio": 4.158784998893315,
+          "rounds_better_by_5pct": 0,
+          "rounds_worse_by_5pct": 9,
+          "rounds": 9
+        },
+        "upstream_t2": {
+          "kind": "operator_profile",
+          "candidate_applied": true,
+          "median_latency_ratio": 1.6839590653039944,
+          "min_latency_ratio": 0.840766891173047,
+          "max_latency_ratio": 2.4001943614431163,
+          "rounds_better_by_5pct": 1,
+          "rounds_worse_by_5pct": 8,
+          "rounds": 9
+        },
+        "upstream_t8": {
+          "kind": "operator_profile",
+          "candidate_applied": true,
+          "median_latency_ratio": 0.9020620366072926,
+          "min_latency_ratio": 0.27075246954700516,
+          "max_latency_ratio": 3.2063830427165336,
+          "rounds_better_by_5pct": 6,
+          "rounds_worse_by_5pct": 3,
+          "rounds": 9
+        }
+      },
+      "planned_payload_bytes": 63359808,
+      "peak_working_set_bytes": 92254208
+    },
+    {
+      "tensor": "blk.0.ffn_gate.weight",
+      "tensor_sha256": "2f4d87284dcc860fc5e4e6c7e00660b733739445ccb1c90f55b2b91716fc45dd",
+      "k": 4096,
+      "rows": 12288,
+      "columns": 3,
+      "pair_dispatch": "custom_pair",
+      "output_sha256": "03cb51364d08e776ac5aa6823f1af2ea75b8a0f716109e644de16d635a46c41d",
+      "profiles": {
+        "upstream": {
+          "threads": 4,
+          "kind": "operator_profile",
+          "samples": 9,
+          "median_s": 0.00229373125,
+          "min_s": 0.00201073125,
+          "max_s": 0.00260239375,
+          "all_outputs_byte_equal": true
+        },
+        "same_schedule_scalar": {
+          "threads": 4,
+          "kind": "operator_profile",
+          "samples": 9,
+          "median_s": 0.00266779375,
+          "min_s": 0.0021866,
+          "max_s": 0.0052218625,
+          "all_outputs_byte_equal": true
+        },
+        "pair_shared_unpack": {
+          "threads": 4,
+          "kind": "operator_profile",
+          "samples": 9,
+          "median_s": 0.00310075,
+          "min_s": 0.0021445,
+          "max_s": 0.00563611875,
+          "all_outputs_byte_equal": true
+        },
+        "upstream_t1": {
+          "threads": 1,
+          "kind": "operator_profile",
+          "samples": 9,
+          "median_s": 0.0077161375,
+          "min_s": 0.007224225,
+          "max_s": 0.011098175,
+          "all_outputs_byte_equal": true
+        },
+        "upstream_t2": {
+          "threads": 2,
+          "kind": "operator_profile",
+          "samples": 9,
+          "median_s": 0.004163275,
+          "min_s": 0.00371803125,
+          "max_s": 0.00542448125,
+          "all_outputs_byte_equal": true
+        },
+        "upstream_t8": {
+          "threads": 8,
+          "kind": "operator_profile",
+          "samples": 9,
+          "median_s": 0.0015407875,
+          "min_s": 0.0012796625,
+          "max_s": 0.006249625,
+          "all_outputs_byte_equal": true
+        }
+      },
+      "paired_comparisons": {
+        "same_schedule_scalar": {
+          "kind": "operator_profile",
+          "candidate_applied": true,
+          "median_latency_ratio": 1.2061163825013705,
+          "min_latency_ratio": 0.8589892164758106,
+          "max_latency_ratio": 2.434200674177599,
+          "rounds_better_by_5pct": 2,
+          "rounds_worse_by_5pct": 7,
+          "rounds": 9
+        },
+        "pair_shared_unpack": {
+          "kind": "operator_profile",
+          "candidate_applied": true,
+          "median_latency_ratio": 1.3518366635149606,
+          "min_latency_ratio": 0.9996707775767482,
+          "max_latency_ratio": 2.4560191300511205,
+          "rounds_better_by_5pct": 0,
+          "rounds_worse_by_5pct": 8,
+          "rounds": 9
+        },
+        "upstream_t1": {
+          "kind": "operator_profile",
+          "candidate_applied": true,
+          "median_latency_ratio": 3.364011149954904,
+          "min_latency_ratio": 3.0220826540433303,
+          "max_latency_ratio": 5.0175133228973,
+          "rounds_better_by_5pct": 0,
+          "rounds_worse_by_5pct": 9,
+          "rounds": 9
+        },
+        "upstream_t2": {
+          "kind": "operator_profile",
+          "candidate_applied": true,
+          "median_latency_ratio": 2.0334040542417564,
+          "min_latency_ratio": 1.4434138761668944,
+          "max_latency_ratio": 2.5286525479776127,
+          "rounds_better_by_5pct": 0,
+          "rounds_worse_by_5pct": 9,
+          "rounds": 9
+        },
+        "upstream_t8": {
+          "kind": "operator_profile",
+          "candidate_applied": true,
+          "median_latency_ratio": 0.7190947323268587,
+          "min_latency_ratio": 0.5578955686286263,
+          "max_latency_ratio": 2.9132979637738794,
+          "rounds_better_by_5pct": 8,
+          "rounds_worse_by_5pct": 1,
+          "rounds": 9
+        }
+      },
+      "planned_payload_bytes": 63582144,
+      "peak_working_set_bytes": 92495872
+    },
+    {
+      "tensor": "blk.0.ffn_gate.weight",
+      "tensor_sha256": "2f4d87284dcc860fc5e4e6c7e00660b733739445ccb1c90f55b2b91716fc45dd",
+      "k": 4096,
+      "rows": 12288,
+      "columns": 7,
+      "pair_dispatch": "custom_pair",
+      "output_sha256": "551e1bba44b66eaa23ca4eabf2fc2a810fd48b9840381f4c9e93ddb5afaec14b",
+      "profiles": {
+        "upstream": {
+          "threads": 4,
+          "kind": "operator_profile",
+          "samples": 9,
+          "median_s": 0.0051948875,
+          "min_s": 0.00492343125,
+          "max_s": 0.0115252375,
+          "all_outputs_byte_equal": true
+        },
+        "same_schedule_scalar": {
+          "threads": 4,
+          "kind": "operator_profile",
+          "samples": 9,
+          "median_s": 0.00576825625,
+          "min_s": 0.0050787125,
+          "max_s": 0.010643675,
+          "all_outputs_byte_equal": true
+        },
+        "pair_shared_unpack": {
+          "threads": 4,
+          "kind": "operator_profile",
+          "samples": 9,
+          "median_s": 0.0057317375,
+          "min_s": 0.00526519375,
+          "max_s": 0.012530125,
+          "all_outputs_byte_equal": true
+        },
+        "upstream_t1": {
+          "threads": 1,
+          "kind": "operator_profile",
+          "samples": 9,
+          "median_s": 0.01638095625,
+          "min_s": 0.01601096875,
+          "max_s": 0.021774425,
+          "all_outputs_byte_equal": true
+        },
+        "upstream_t2": {
+          "threads": 2,
+          "kind": "operator_profile",
+          "samples": 9,
+          "median_s": 0.0111331,
+          "min_s": 0.00837371875,
+          "max_s": 0.02328295,
+          "all_outputs_byte_equal": true
+        },
+        "upstream_t8": {
+          "threads": 8,
+          "kind": "operator_profile",
+          "samples": 9,
+          "median_s": 0.0036509125,
+          "min_s": 0.003369575,
+          "max_s": 0.0251922,
+          "all_outputs_byte_equal": true
+        }
+      },
+      "paired_comparisons": {
+        "same_schedule_scalar": {
+          "kind": "operator_profile",
+          "candidate_applied": true,
+          "median_latency_ratio": 1.094523763279928,
+          "min_latency_ratio": 0.7898947933242413,
+          "max_latency_ratio": 1.235260224212438,
+          "rounds_better_by_5pct": 3,
+          "rounds_worse_by_5pct": 5,
+          "rounds": 9
+        },
+        "pair_shared_unpack": {
+          "kind": "operator_profile",
+          "candidate_applied": true,
+          "median_latency_ratio": 1.1038528769950835,
+          "min_latency_ratio": 0.8775475649340078,
+          "max_latency_ratio": 1.496591455745724,
+          "rounds_better_by_5pct": 2,
+          "rounds_worse_by_5pct": 7,
+          "rounds": 9
+        },
+        "upstream_t1": {
+          "kind": "operator_profile",
+          "candidate_applied": true,
+          "median_latency_ratio": 3.236837226780234,
+          "min_latency_ratio": 1.8892821080693565,
+          "max_latency_ratio": 3.663864562383721,
+          "rounds_better_by_5pct": 0,
+          "rounds_worse_by_5pct": 9,
+          "rounds": 9
+        },
+        "upstream_t2": {
+          "kind": "operator_profile",
+          "candidate_applied": true,
+          "median_latency_ratio": 1.738297351059792,
+          "min_latency_ratio": 1.0886212757003924,
+          "max_latency_ratio": 4.318229713047057,
+          "rounds_better_by_5pct": 0,
+          "rounds_worse_by_5pct": 9,
+          "rounds": 9
+        },
+        "upstream_t8": {
+          "kind": "operator_profile",
+          "candidate_applied": true,
+          "median_latency_ratio": 0.7060261789941755,
+          "min_latency_ratio": 0.5455456545258895,
+          "max_latency_ratio": 4.530150634356689,
+          "rounds_better_by_5pct": 6,
+          "rounds_worse_by_5pct": 3,
+          "rounds": 9
+        }
+      },
+      "planned_payload_bytes": 64471488,
+      "peak_working_set_bytes": 93511680
+    },
+    {
+      "tensor": "blk.0.ffn_gate.weight",
+      "tensor_sha256": "2f4d87284dcc860fc5e4e6c7e00660b733739445ccb1c90f55b2b91716fc45dd",
+      "k": 4096,
+      "rows": 12288,
+      "columns": 8,
+      "pair_dispatch": "unchanged_upstream",
+      "output_sha256": "96c97afee914cff9ce66d7f6aa93702c16cdb3a520a36b08a8969f41bf6ad806",
+      "profiles": {
+        "upstream": {
+          "threads": 4,
+          "kind": "operator_profile",
+          "samples": 9,
+          "median_s": 0.0081557,
+          "min_s": 0.0053815,
+          "max_s": 0.0120919,
+          "all_outputs_byte_equal": true
+        },
+        "same_schedule_scalar": {
+          "threads": 4,
+          "kind": "unchanged_upstream_control",
+          "samples": 9,
+          "median_s": 0.0079787,
+          "min_s": 0.0057824,
+          "max_s": 0.0096374,
+          "all_outputs_byte_equal": true
+        },
+        "pair_shared_unpack": {
+          "threads": 4,
+          "kind": "unchanged_upstream_control",
+          "samples": 9,
+          "median_s": 0.0083262,
+          "min_s": 0.0070087,
+          "max_s": 0.0399105,
+          "all_outputs_byte_equal": true
+        },
+        "upstream_t1": {
+          "threads": 1,
+          "kind": "operator_profile",
+          "samples": 9,
+          "median_s": 0.0251419,
+          "min_s": 0.0225456,
+          "max_s": 0.0322592,
+          "all_outputs_byte_equal": true
+        },
+        "upstream_t2": {
+          "threads": 2,
+          "kind": "operator_profile",
+          "samples": 9,
+          "median_s": 0.0140088,
+          "min_s": 0.0107874,
+          "max_s": 0.045218,
+          "all_outputs_byte_equal": true
+        },
+        "upstream_t8": {
+          "threads": 8,
+          "kind": "operator_profile",
+          "samples": 9,
+          "median_s": 0.0049075,
+          "min_s": 0.0043492,
+          "max_s": 0.0107524,
+          "all_outputs_byte_equal": true
+        }
+      },
+      "paired_comparisons": {
+        "same_schedule_scalar": {
+          "kind": "unchanged_upstream_control",
+          "candidate_applied": false,
+          "median_latency_ratio": 1.0534731126027606,
+          "min_latency_ratio": 0.5104491436416114,
+          "max_latency_ratio": 1.7023506457307442,
+          "rounds_better_by_5pct": 4,
+          "rounds_worse_by_5pct": 5,
+          "rounds": 9
+        },
+        "pair_shared_unpack": {
+          "kind": "unchanged_upstream_control",
+          "candidate_applied": false,
+          "median_latency_ratio": 1.0849212860482036,
+          "min_latency_ratio": 0.8974950034944885,
+          "max_latency_ratio": 3.3005979209222707,
+          "rounds_better_by_5pct": 1,
+          "rounds_worse_by_5pct": 5,
+          "rounds": 9
+        },
+        "upstream_t1": {
+          "kind": "operator_profile",
+          "candidate_applied": true,
+          "median_latency_ratio": 3.5573461995585487,
+          "min_latency_ratio": 1.9427302574450667,
+          "max_latency_ratio": 5.41902815200223,
+          "rounds_better_by_5pct": 0,
+          "rounds_worse_by_5pct": 9,
+          "rounds": 9
+        },
+        "upstream_t2": {
+          "kind": "operator_profile",
+          "candidate_applied": true,
+          "median_latency_ratio": 2.099946649594537,
+          "min_latency_ratio": 1.2684791044425108,
+          "max_latency_ratio": 3.7395281138613456,
+          "rounds_better_by_5pct": 0,
+          "rounds_worse_by_5pct": 9,
+          "rounds": 9
+        },
+        "upstream_t8": {
+          "kind": "operator_profile",
+          "candidate_applied": true,
+          "median_latency_ratio": 0.6395523232780576,
+          "min_latency_ratio": 0.5332712090930269,
+          "max_latency_ratio": 0.8892233644009627,
+          "rounds_better_by_5pct": 9,
+          "rounds_worse_by_5pct": 0,
+          "rounds": 9
+        }
+      },
+      "planned_payload_bytes": 64693824,
+      "peak_working_set_bytes": 92880896
+    },
+    {
+      "tensor": "blk.0.ffn_gate.weight",
+      "tensor_sha256": "2f4d87284dcc860fc5e4e6c7e00660b733739445ccb1c90f55b2b91716fc45dd",
+      "k": 4096,
+      "rows": 12288,
+      "columns": 128,
+      "pair_dispatch": "unchanged_upstream",
+      "output_sha256": "f6215bd8e58cccd221a76344bbad94638346a98bbbeb347c8a1408db23dddce8",
+      "profiles": {
+        "upstream": {
+          "threads": 4,
+          "kind": "operator_profile",
+          "samples": 9,
+          "median_s": 0.0547577,
+          "min_s": 0.0463717,
+          "max_s": 0.0632839,
+          "all_outputs_byte_equal": true
+        },
+        "same_schedule_scalar": {
+          "threads": 4,
+          "kind": "unchanged_upstream_control",
+          "samples": 9,
+          "median_s": 0.0573477,
+          "min_s": 0.0447536,
+          "max_s": 0.0659918,
+          "all_outputs_byte_equal": true
+        },
+        "pair_shared_unpack": {
+          "threads": 4,
+          "kind": "unchanged_upstream_control",
+          "samples": 9,
+          "median_s": 0.0536506,
+          "min_s": 0.0447471,
+          "max_s": 0.1121219,
+          "all_outputs_byte_equal": true
+        },
+        "upstream_t1": {
+          "threads": 1,
+          "kind": "operator_profile",
+          "samples": 9,
+          "median_s": 0.1774303,
+          "min_s": 0.1372748,
+          "max_s": 0.223257,
+          "all_outputs_byte_equal": true
+        },
+        "upstream_t2": {
+          "threads": 2,
+          "kind": "operator_profile",
+          "samples": 9,
+          "median_s": 0.0903039,
+          "min_s": 0.0770578,
+          "max_s": 0.1013967,
+          "all_outputs_byte_equal": true
+        },
+        "upstream_t8": {
+          "threads": 8,
+          "kind": "operator_profile",
+          "samples": 9,
+          "median_s": 0.040131,
+          "min_s": 0.0355152,
+          "max_s": 0.0431356,
+          "all_outputs_byte_equal": true
+        }
+      },
+      "paired_comparisons": {
+        "same_schedule_scalar": {
+          "kind": "unchanged_upstream_control",
+          "candidate_applied": false,
+          "median_latency_ratio": 1.1364489970123774,
+          "min_latency_ratio": 0.7553337462721581,
+          "max_latency_ratio": 1.249007294351893,
+          "rounds_better_by_5pct": 3,
+          "rounds_worse_by_5pct": 5,
+          "rounds": 9
+        },
+        "pair_shared_unpack": {
+          "kind": "unchanged_upstream_control",
+          "candidate_applied": false,
+          "median_latency_ratio": 0.9508726567550098,
+          "min_latency_ratio": 0.8469151364426123,
+          "max_latency_ratio": 1.859062194292915,
+          "rounds_better_by_5pct": 4,
+          "rounds_worse_by_5pct": 2,
+          "rounds": 9
+        },
+        "upstream_t1": {
+          "kind": "operator_profile",
+          "candidate_applied": true,
+          "median_latency_ratio": 3.2402803623965215,
+          "min_latency_ratio": 2.1691899519467035,
+          "max_latency_ratio": 4.814509711742291,
+          "rounds_better_by_5pct": 0,
+          "rounds_worse_by_5pct": 9,
+          "rounds": 9
+        },
+        "upstream_t2": {
+          "kind": "operator_profile",
+          "candidate_applied": true,
+          "median_latency_ratio": 1.6309980911424622,
+          "min_latency_ratio": 1.4976580204539358,
+          "max_latency_ratio": 1.9473924829152263,
+          "rounds_better_by_5pct": 0,
+          "rounds_worse_by_5pct": 9,
+          "rounds": 9
+        },
+        "upstream_t8": {
+          "kind": "operator_profile",
+          "candidate_applied": true,
+          "median_latency_ratio": 0.732883229207947,
+          "min_latency_ratio": 0.5612043505536163,
+          "max_latency_ratio": 0.8575143891640806,
+          "rounds_better_by_5pct": 9,
+          "rounds_worse_by_5pct": 0,
+          "rounds": 9
+        }
+      },
+      "planned_payload_bytes": 91374144,
+      "peak_working_set_bytes": 107196416
+    },
+    {
+      "tensor": "blk.0.ssm_out.weight",
+      "tensor_sha256": "db739d3dc80d72ccbb14b2e164bb2800e181c1701ed696a8a961b1b5a0f67358",
+      "k": 4096,
+      "rows": 4096,
+      "columns": 1,
+      "pair_dispatch": "unchanged_upstream",
+      "output_sha256": "338a8955be263b6fa1969cd4243502d92d6f02fee36c38fa45ddb2de92c0f18e",
+      "profiles": {
+        "upstream": {
+          "threads": 4,
+          "kind": "operator_profile",
+          "samples": 9,
+          "median_s": 0.00033634375,
+          "min_s": 0.00025508125,
+          "max_s": 0.0005388375,
+          "all_outputs_byte_equal": true
+        },
+        "same_schedule_scalar": {
+          "threads": 4,
+          "kind": "unchanged_upstream_control",
+          "samples": 9,
+          "median_s": 0.000278075,
+          "min_s": 0.00020959375,
+          "max_s": 0.0005681875,
+          "all_outputs_byte_equal": true
+        },
+        "pair_shared_unpack": {
+          "threads": 4,
+          "kind": "unchanged_upstream_control",
+          "samples": 9,
+          "median_s": 0.00031240625,
+          "min_s": 0.00021149375,
+          "max_s": 0.00066484375,
+          "all_outputs_byte_equal": true
+        },
+        "upstream_t1": {
+          "threads": 1,
+          "kind": "operator_profile",
+          "samples": 9,
+          "median_s": 0.00114570625,
+          "min_s": 0.00102631875,
+          "max_s": 0.00171333125,
+          "all_outputs_byte_equal": true
+        },
+        "upstream_t2": {
+          "threads": 2,
+          "kind": "operator_profile",
+          "samples": 9,
+          "median_s": 0.00059771875,
+          "min_s": 0.00047715625,
+          "max_s": 0.00080085,
+          "all_outputs_byte_equal": true
+        },
+        "upstream_t8": {
+          "threads": 8,
+          "kind": "operator_profile",
+          "samples": 9,
+          "median_s": 0.000153625,
+          "min_s": 0.00014578125,
+          "max_s": 0.00073805625,
+          "all_outputs_byte_equal": true
+        }
+      },
+      "paired_comparisons": {
+        "same_schedule_scalar": {
+          "kind": "unchanged_upstream_control",
+          "candidate_applied": false,
+          "median_latency_ratio": 0.881185732647815,
+          "min_latency_ratio": 0.5329992808592572,
+          "max_latency_ratio": 1.6893059555885905,
+          "rounds_better_by_5pct": 5,
+          "rounds_worse_by_5pct": 2,
+          "rounds": 9
+        },
+        "pair_shared_unpack": {
+          "kind": "unchanged_upstream_control",
+          "candidate_applied": false,
+          "median_latency_ratio": 0.9288302517885348,
+          "min_latency_ratio": 0.7161468311748026,
+          "max_latency_ratio": 2.378902406297522,
+          "rounds_better_by_5pct": 5,
+          "rounds_worse_by_5pct": 4,
+          "rounds": 9
+        },
+        "upstream_t1": {
+          "kind": "operator_profile",
+          "candidate_applied": true,
+          "median_latency_ratio": 3.539765424164525,
+          "min_latency_ratio": 2.310845611516866,
+          "max_latency_ratio": 4.988862399679704,
+          "rounds_better_by_5pct": 0,
+          "rounds_worse_by_5pct": 9,
+          "rounds": 9
+        },
+        "upstream_t2": {
+          "kind": "operator_profile",
+          "candidate_applied": true,
+          "median_latency_ratio": 1.7569162387922446,
+          "min_latency_ratio": 1.2326592645755057,
+          "max_latency_ratio": 3.009065738857717,
+          "rounds_better_by_5pct": 0,
+          "rounds_worse_by_5pct": 9,
+          "rounds": 9
+        },
+        "upstream_t8": {
+          "kind": "operator_profile",
+          "candidate_applied": true,
+          "median_latency_ratio": 0.4733385709393445,
+          "min_latency_ratio": 0.270547706868954,
+          "max_latency_ratio": 2.371646047557841,
+          "rounds_better_by_5pct": 8,
+          "rounds_worse_by_5pct": 1,
+          "rounds": 9
+        }
+      },
+      "planned_payload_bytes": 25257664,
+      "peak_working_set_bytes": 54161408
+    },
+    {
+      "tensor": "blk.0.ssm_out.weight",
+      "tensor_sha256": "db739d3dc80d72ccbb14b2e164bb2800e181c1701ed696a8a961b1b5a0f67358",
+      "k": 4096,
+      "rows": 4096,
+      "columns": 2,
+      "pair_dispatch": "custom_pair",
+      "output_sha256": "28b938bf1717ac4cb84710137b2377851757be9e9c744ab35b7acc6381f6e599",
+      "profiles": {
+        "upstream": {
+          "threads": 4,
+          "kind": "operator_profile",
+          "samples": 9,
+          "median_s": 0.00052125625,
+          "min_s": 0.0004237,
+          "max_s": 0.00224929375,
+          "all_outputs_byte_equal": true
+        },
+        "same_schedule_scalar": {
+          "threads": 4,
+          "kind": "operator_profile",
+          "samples": 9,
+          "median_s": 0.0007788125,
+          "min_s": 0.000527975,
+          "max_s": 0.002374975,
+          "all_outputs_byte_equal": true
+        },
+        "pair_shared_unpack": {
+          "threads": 4,
+          "kind": "operator_profile",
+          "samples": 9,
+          "median_s": 0.00063894375,
+          "min_s": 0.0004321375,
+          "max_s": 0.00240556875,
+          "all_outputs_byte_equal": true
+        },
+        "upstream_t1": {
+          "threads": 1,
+          "kind": "operator_profile",
+          "samples": 9,
+          "median_s": 0.00202105625,
+          "min_s": 0.0018428375,
+          "max_s": 0.0051929,
+          "all_outputs_byte_equal": true
+        },
+        "upstream_t2": {
+          "threads": 2,
+          "kind": "operator_profile",
+          "samples": 9,
+          "median_s": 0.00090539375,
+          "min_s": 0.0008390625,
+          "max_s": 0.002361025,
+          "all_outputs_byte_equal": true
+        },
+        "upstream_t8": {
+          "threads": 8,
+          "kind": "operator_profile",
+          "samples": 9,
+          "median_s": 0.000295075,
+          "min_s": 0.00027864375,
+          "max_s": 0.0032707625,
+          "all_outputs_byte_equal": true
+        }
+      },
+      "paired_comparisons": {
+        "same_schedule_scalar": {
+          "kind": "operator_profile",
+          "candidate_applied": true,
+          "median_latency_ratio": 1.2937267526591694,
+          "min_latency_ratio": 0.34624757215459295,
+          "max_latency_ratio": 3.1759775716298733,
+          "rounds_better_by_5pct": 2,
+          "rounds_worse_by_5pct": 6,
+          "rounds": 9
+        },
+        "pair_shared_unpack": {
+          "kind": "operator_profile",
+          "candidate_applied": true,
+          "median_latency_ratio": 0.944326017445022,
+          "min_latency_ratio": 0.26843272695784237,
+          "max_latency_ratio": 5.6495273602630345,
+          "rounds_better_by_5pct": 5,
+          "rounds_worse_by_5pct": 4,
+          "rounds": 9
+        },
+        "upstream_t1": {
+          "kind": "operator_profile",
+          "candidate_applied": true,
+          "median_latency_ratio": 3.8454454982554167,
+          "min_latency_ratio": 1.0078302356017306,
+          "max_latency_ratio": 12.256077413264103,
+          "rounds_better_by_5pct": 0,
+          "rounds_worse_by_5pct": 8,
+          "rounds": 9
+        },
+        "upstream_t2": {
+          "kind": "operator_profile",
+          "candidate_applied": true,
+          "median_latency_ratio": 1.6838167408064653,
+          "min_latency_ratio": 0.37303375781842635,
+          "max_latency_ratio": 3.353124262449847,
+          "rounds_better_by_5pct": 2,
+          "rounds_worse_by_5pct": 7,
+          "rounds": 9
+        },
+        "upstream_t8": {
+          "kind": "operator_profile",
+          "candidate_applied": true,
+          "median_latency_ratio": 0.5660843395163128,
+          "min_latency_ratio": 0.1376279922564873,
+          "max_latency_ratio": 7.7195244276610815,
+          "rounds_better_by_5pct": 8,
+          "rounds_worse_by_5pct": 1,
+          "rounds": 9
+        }
+      },
+      "planned_payload_bytes": 25348928,
+      "peak_working_set_bytes": 54358016
+    },
+    {
+      "tensor": "blk.0.ssm_out.weight",
+      "tensor_sha256": "db739d3dc80d72ccbb14b2e164bb2800e181c1701ed696a8a961b1b5a0f67358",
+      "k": 4096,
+      "rows": 4096,
+      "columns": 3,
+      "pair_dispatch": "custom_pair",
+      "output_sha256": "aebc6ba009b5fedcf12e2d8cd1af599074c5602cefcca1c3a8068aca29d65388",
+      "profiles": {
+        "upstream": {
+          "threads": 4,
+          "kind": "operator_profile",
+          "samples": 9,
+          "median_s": 0.00087505625,
+          "min_s": 0.0007071625,
+          "max_s": 0.00130579375,
+          "all_outputs_byte_equal": true
+        },
+        "same_schedule_scalar": {
+          "threads": 4,
+          "kind": "operator_profile",
+          "samples": 9,
+          "median_s": 0.00102568125,
+          "min_s": 0.0005543375,
+          "max_s": 0.00238171875,
+          "all_outputs_byte_equal": true
+        },
+        "pair_shared_unpack": {
+          "threads": 4,
+          "kind": "operator_profile",
+          "samples": 9,
+          "median_s": 0.0009803125,
+          "min_s": 0.0005495375,
+          "max_s": 0.00276898125,
+          "all_outputs_byte_equal": true
+        },
+        "upstream_t1": {
+          "threads": 1,
+          "kind": "operator_profile",
+          "samples": 9,
+          "median_s": 0.00277760625,
+          "min_s": 0.00256051875,
+          "max_s": 0.00393431875,
+          "all_outputs_byte_equal": true
+        },
+        "upstream_t2": {
+          "threads": 2,
+          "kind": "operator_profile",
+          "samples": 9,
+          "median_s": 0.0015937875,
+          "min_s": 0.00133825625,
+          "max_s": 0.00446038125,
+          "all_outputs_byte_equal": true
+        },
+        "upstream_t8": {
+          "threads": 8,
+          "kind": "operator_profile",
+          "samples": 9,
+          "median_s": 0.00061770625,
+          "min_s": 0.00040990625,
+          "max_s": 0.0302849,
+          "all_outputs_byte_equal": true
+        }
+      },
+      "paired_comparisons": {
+        "same_schedule_scalar": {
+          "kind": "operator_profile",
+          "candidate_applied": true,
+          "median_latency_ratio": 1.3057764420233897,
+          "min_latency_ratio": 0.7174228318982228,
+          "max_latency_ratio": 2.4096404588165363,
+          "rounds_better_by_5pct": 3,
+          "rounds_worse_by_5pct": 6,
+          "rounds": 9
+        },
+        "pair_shared_unpack": {
+          "kind": "operator_profile",
+          "candidate_applied": true,
+          "median_latency_ratio": 1.1635055591890124,
+          "min_latency_ratio": 0.7408724374152124,
+          "max_latency_ratio": 2.1205349236814772,
+          "rounds_better_by_5pct": 2,
+          "rounds_worse_by_5pct": 7,
+          "rounds": 9
+        },
+        "upstream_t1": {
+          "kind": "operator_profile",
+          "candidate_applied": true,
+          "median_latency_ratio": 3.3738545148600405,
+          "min_latency_ratio": 1.98204157432979,
+          "max_latency_ratio": 5.074780519658505,
+          "rounds_better_by_5pct": 0,
+          "rounds_worse_by_5pct": 9,
+          "rounds": 9
+        },
+        "upstream_t2": {
+          "kind": "operator_profile",
+          "candidate_applied": true,
+          "median_latency_ratio": 1.818085819432676,
+          "min_latency_ratio": 1.1166819032485031,
+          "max_latency_ratio": 5.753335536870279,
+          "rounds_better_by_5pct": 0,
+          "rounds_worse_by_5pct": 9,
+          "rounds": 9
+        },
+        "upstream_t8": {
+          "kind": "operator_profile",
+          "candidate_applied": true,
+          "median_latency_ratio": 0.6585382189601765,
+          "min_latency_ratio": 0.3787543017417567,
+          "max_latency_ratio": 39.06374402424966,
+          "rounds_better_by_5pct": 6,
+          "rounds_worse_by_5pct": 3,
+          "rounds": 9
+        }
+      },
+      "planned_payload_bytes": 25440192,
+      "peak_working_set_bytes": 54435840
+    },
+    {
+      "tensor": "blk.0.ssm_out.weight",
+      "tensor_sha256": "db739d3dc80d72ccbb14b2e164bb2800e181c1701ed696a8a961b1b5a0f67358",
+      "k": 4096,
+      "rows": 4096,
+      "columns": 7,
+      "pair_dispatch": "custom_pair",
+      "output_sha256": "2b69bacf5d2b6d217093284b74a3a4833845081cb589f23b3944c037601007c6",
+      "profiles": {
+        "upstream": {
+          "threads": 4,
+          "kind": "operator_profile",
+          "samples": 9,
+          "median_s": 0.00233525,
+          "min_s": 0.001594075,
+          "max_s": 0.00411065,
+          "all_outputs_byte_equal": true
+        },
+        "same_schedule_scalar": {
+          "threads": 4,
+          "kind": "operator_profile",
+          "samples": 9,
+          "median_s": 0.002601825,
+          "min_s": 0.00192103125,
+          "max_s": 0.00504098125,
+          "all_outputs_byte_equal": true
+        },
+        "pair_shared_unpack": {
+          "threads": 4,
+          "kind": "operator_profile",
+          "samples": 9,
+          "median_s": 0.00236671875,
+          "min_s": 0.00165614375,
+          "max_s": 0.00510979375,
+          "all_outputs_byte_equal": true
+        },
+        "upstream_t1": {
+          "threads": 1,
+          "kind": "operator_profile",
+          "samples": 9,
+          "median_s": 0.00582519375,
+          "min_s": 0.0053443625,
+          "max_s": 0.00640539375,
+          "all_outputs_byte_equal": true
+        },
+        "upstream_t2": {
+          "threads": 2,
+          "kind": "operator_profile",
+          "samples": 9,
+          "median_s": 0.00319283125,
+          "min_s": 0.00280638125,
+          "max_s": 0.004974725,
+          "all_outputs_byte_equal": true
+        },
+        "upstream_t8": {
+          "threads": 8,
+          "kind": "operator_profile",
+          "samples": 9,
+          "median_s": 0.00134055,
+          "min_s": 0.00109896875,
+          "max_s": 0.0039564625,
+          "all_outputs_byte_equal": true
+        }
+      },
+      "paired_comparisons": {
+        "same_schedule_scalar": {
+          "kind": "operator_profile",
+          "candidate_applied": true,
+          "median_latency_ratio": 0.9710710378084856,
+          "min_latency_ratio": 0.5072099303029933,
+          "max_latency_ratio": 2.953404322321252,
+          "rounds_better_by_5pct": 4,
+          "rounds_worse_by_5pct": 4,
+          "rounds": 9
+        },
+        "pair_shared_unpack": {
+          "kind": "operator_profile",
+          "candidate_applied": true,
+          "median_latency_ratio": 1.0389371579128963,
+          "min_latency_ratio": 0.4865000060817632,
+          "max_latency_ratio": 2.188114227598758,
+          "rounds_better_by_5pct": 4,
+          "rounds_worse_by_5pct": 4,
+          "rounds": 9
+        },
+        "upstream_t1": {
+          "kind": "operator_profile",
+          "candidate_applied": true,
+          "median_latency_ratio": 2.5587624451343536,
+          "min_latency_ratio": 1.3860647566559954,
+          "max_latency_ratio": 4.003987422172734,
+          "rounds_better_by_5pct": 0,
+          "rounds_worse_by_5pct": 9,
+          "rounds": 9
+        },
+        "upstream_t2": {
+          "kind": "operator_profile",
+          "candidate_applied": true,
+          "median_latency_ratio": 1.4154489576410743,
+          "min_latency_ratio": 0.7030138177660467,
+          "max_latency_ratio": 3.1207596882204416,
+          "rounds_better_by_5pct": 2,
+          "rounds_worse_by_5pct": 6,
+          "rounds": 9
+        },
+        "upstream_t8": {
+          "kind": "operator_profile",
+          "candidate_applied": true,
+          "median_latency_ratio": 0.7473726700530824,
+          "min_latency_ratio": 0.267346709157919,
+          "max_latency_ratio": 2.4819801452252874,
+          "rounds_better_by_5pct": 8,
+          "rounds_worse_by_5pct": 1,
+          "rounds": 9
+        }
+      },
+      "planned_payload_bytes": 25805248,
+      "peak_working_set_bytes": 54788096
+    },
+    {
+      "tensor": "blk.0.ssm_out.weight",
+      "tensor_sha256": "db739d3dc80d72ccbb14b2e164bb2800e181c1701ed696a8a961b1b5a0f67358",
+      "k": 4096,
+      "rows": 4096,
+      "columns": 8,
+      "pair_dispatch": "unchanged_upstream",
+      "output_sha256": "16c2b8c8522dafa83d86f0057f805098b2cd103c4aaa52d6e5f8db0cb9bd021f",
+      "profiles": {
+        "upstream": {
+          "threads": 4,
+          "kind": "operator_profile",
+          "samples": 9,
+          "median_s": 0.0027875,
+          "min_s": 0.0021349,
+          "max_s": 0.0045181,
+          "all_outputs_byte_equal": true
+        },
+        "same_schedule_scalar": {
+          "threads": 4,
+          "kind": "unchanged_upstream_control",
+          "samples": 9,
+          "median_s": 0.0030189,
+          "min_s": 0.0027014,
+          "max_s": 0.0060869,
+          "all_outputs_byte_equal": true
+        },
+        "pair_shared_unpack": {
+          "threads": 4,
+          "kind": "unchanged_upstream_control",
+          "samples": 9,
+          "median_s": 0.0030142,
+          "min_s": 0.0022421,
+          "max_s": 0.0239414,
+          "all_outputs_byte_equal": true
+        },
+        "upstream_t1": {
+          "threads": 1,
+          "kind": "operator_profile",
+          "samples": 9,
+          "median_s": 0.0091654,
+          "min_s": 0.0071739,
+          "max_s": 0.0154308,
+          "all_outputs_byte_equal": true
+        },
+        "upstream_t2": {
+          "threads": 2,
+          "kind": "operator_profile",
+          "samples": 9,
+          "median_s": 0.004616,
+          "min_s": 0.0035104,
+          "max_s": 0.0110969,
+          "all_outputs_byte_equal": true
+        },
+        "upstream_t8": {
+          "threads": 8,
+          "kind": "operator_profile",
+          "samples": 9,
+          "median_s": 0.0028096,
+          "min_s": 0.0014565,
+          "max_s": 0.0266564,
+          "all_outputs_byte_equal": true
+        }
+      },
+      "paired_comparisons": {
+        "same_schedule_scalar": {
+          "kind": "unchanged_upstream_control",
+          "candidate_applied": false,
+          "median_latency_ratio": 1.083091163491551,
+          "min_latency_ratio": 0.7177130104412975,
+          "max_latency_ratio": 2.2417249858142614,
+          "rounds_better_by_5pct": 2,
+          "rounds_worse_by_5pct": 6,
+          "rounds": 9
+        },
+        "pair_shared_unpack": {
+          "kind": "unchanged_upstream_control",
+          "candidate_applied": false,
+          "median_latency_ratio": 1.0502131247365216,
+          "min_latency_ratio": 0.8008183001673795,
+          "max_latency_ratio": 5.2989973661494885,
+          "rounds_better_by_5pct": 1,
+          "rounds_worse_by_5pct": 5,
+          "rounds": 9
+        },
+        "upstream_t1": {
+          "kind": "operator_profile",
+          "candidate_applied": true,
+          "median_latency_ratio": 3.177370136625286,
+          "min_latency_ratio": 1.7018436953586686,
+          "max_latency_ratio": 5.837261206733497,
+          "rounds_better_by_5pct": 0,
+          "rounds_worse_by_5pct": 9,
+          "rounds": 9
+        },
+        "upstream_t2": {
+          "kind": "operator_profile",
+          "candidate_applied": true,
+          "median_latency_ratio": 1.6442924727153496,
+          "min_latency_ratio": 1.2263875235792663,
+          "max_latency_ratio": 2.744681614349776,
+          "rounds_better_by_5pct": 0,
+          "rounds_worse_by_5pct": 9,
+          "rounds": 9
+        },
+        "upstream_t8": {
+          "kind": "operator_profile",
+          "candidate_applied": true,
+          "median_latency_ratio": 1.0079282511210763,
+          "min_latency_ratio": 0.3869656473338824,
+          "max_latency_ratio": 5.899913680529426,
+          "rounds_better_by_5pct": 4,
+          "rounds_worse_by_5pct": 4,
+          "rounds": 9
+        }
+      },
+      "planned_payload_bytes": 25896512,
+      "peak_working_set_bytes": 54661120
+    },
+    {
+      "tensor": "blk.0.ssm_out.weight",
+      "tensor_sha256": "db739d3dc80d72ccbb14b2e164bb2800e181c1701ed696a8a961b1b5a0f67358",
+      "k": 4096,
+      "rows": 4096,
+      "columns": 128,
+      "pair_dispatch": "unchanged_upstream",
+      "output_sha256": "9421ae4496782fc0895a68d31daa5c077fc278e12933eb41873c5992d1e88324",
+      "profiles": {
+        "upstream": {
+          "threads": 4,
+          "kind": "operator_profile",
+          "samples": 9,
+          "median_s": 0.021636,
+          "min_s": 0.0176939,
+          "max_s": 0.0366052,
+          "all_outputs_byte_equal": true
+        },
+        "same_schedule_scalar": {
+          "threads": 4,
+          "kind": "unchanged_upstream_control",
+          "samples": 9,
+          "median_s": 0.0208442,
+          "min_s": 0.0187571,
+          "max_s": 0.0451217,
+          "all_outputs_byte_equal": true
+        },
+        "pair_shared_unpack": {
+          "threads": 4,
+          "kind": "unchanged_upstream_control",
+          "samples": 9,
+          "median_s": 0.0210264,
+          "min_s": 0.0138019,
+          "max_s": 0.0393725,
+          "all_outputs_byte_equal": true
+        },
+        "upstream_t1": {
+          "threads": 1,
+          "kind": "operator_profile",
+          "samples": 9,
+          "median_s": 0.0572714,
+          "min_s": 0.0482998,
+          "max_s": 0.0678894,
+          "all_outputs_byte_equal": true
+        },
+        "upstream_t2": {
+          "threads": 2,
+          "kind": "operator_profile",
+          "samples": 9,
+          "median_s": 0.0331999,
+          "min_s": 0.0243701,
+          "max_s": 0.0728206,
+          "all_outputs_byte_equal": true
+        },
+        "upstream_t8": {
+          "threads": 8,
+          "kind": "operator_profile",
+          "samples": 9,
+          "median_s": 0.0282726,
+          "min_s": 0.0111286,
+          "max_s": 0.0499742,
+          "all_outputs_byte_equal": true
+        }
+      },
+      "paired_comparisons": {
+        "same_schedule_scalar": {
+          "kind": "unchanged_upstream_control",
+          "candidate_applied": false,
+          "median_latency_ratio": 0.9531683729815241,
+          "min_latency_ratio": 0.5694327581873614,
+          "max_latency_ratio": 2.5501274450516846,
+          "rounds_better_by_5pct": 4,
+          "rounds_worse_by_5pct": 4,
+          "rounds": 9
+        },
+        "pair_shared_unpack": {
+          "kind": "unchanged_upstream_control",
+          "candidate_applied": false,
+          "median_latency_ratio": 0.9612404794947167,
+          "min_latency_ratio": 0.7552587225845993,
+          "max_latency_ratio": 1.9586554437911032,
+          "rounds_better_by_5pct": 4,
+          "rounds_worse_by_5pct": 4,
+          "rounds": 9
+        },
+        "upstream_t1": {
+          "kind": "operator_profile",
+          "candidate_applied": true,
+          "median_latency_ratio": 2.6777036185068477,
+          "min_latency_ratio": 1.3891660201282878,
+          "max_latency_ratio": 3.660185833734623,
+          "rounds_better_by_5pct": 0,
+          "rounds_worse_by_5pct": 9,
+          "rounds": 9
+        },
+        "upstream_t2": {
+          "kind": "operator_profile",
+          "candidate_applied": true,
+          "median_latency_ratio": 1.6515884149678137,
+          "min_latency_ratio": 1.1263680902200037,
+          "max_latency_ratio": 2.9722525952322982,
+          "rounds_better_by_5pct": 0,
+          "rounds_worse_by_5pct": 9,
+          "rounds": 9
+        },
+        "upstream_t8": {
+          "kind": "operator_profile",
+          "candidate_applied": true,
+          "median_latency_ratio": 1.3652213346737623,
+          "min_latency_ratio": 0.51452365168341,
+          "max_latency_ratio": 1.7812479249208706,
+          "rounds_better_by_5pct": 4,
+          "rounds_worse_by_5pct": 5,
+          "rounds": 9
+        }
+      },
+      "planned_payload_bytes": 36848192,
+      "peak_working_set_bytes": 61083648
+    },
+    {
+      "tensor": "blk.3.attn_q.weight",
+      "tensor_sha256": "64825192e7312ffbc1f9f701cceacd319798a9328f5122175d0521a0bbe712d6",
+      "k": 4096,
+      "rows": 8192,
+      "columns": 1,
+      "pair_dispatch": "unchanged_upstream",
+      "output_sha256": "9c66536b4fccd43259ab7c5869cf426b34060a15e0f8a4ba0a6d9472f28f0f24",
+      "profiles": {
+        "upstream": {
+          "threads": 4,
+          "kind": "operator_profile",
+          "samples": 9,
+          "median_s": 0.0007800875,
+          "min_s": 0.0005867625,
+          "max_s": 0.000858625,
+          "all_outputs_byte_equal": true
+        },
+        "same_schedule_scalar": {
+          "threads": 4,
+          "kind": "unchanged_upstream_control",
+          "samples": 9,
+          "median_s": 0.00069825,
+          "min_s": 0.0006208,
+          "max_s": 0.0024803375,
+          "all_outputs_byte_equal": true
+        },
+        "pair_shared_unpack": {
+          "threads": 4,
+          "kind": "unchanged_upstream_control",
+          "samples": 9,
+          "median_s": 0.00076604375,
+          "min_s": 0.0006825375,
+          "max_s": 0.0029528125,
+          "all_outputs_byte_equal": true
+        },
+        "upstream_t1": {
+          "threads": 1,
+          "kind": "operator_profile",
+          "samples": 9,
+          "median_s": 0.00220270625,
+          "min_s": 0.00199626875,
+          "max_s": 0.00332290625,
+          "all_outputs_byte_equal": true
+        },
+        "upstream_t2": {
+          "threads": 2,
+          "kind": "operator_profile",
+          "samples": 9,
+          "median_s": 0.001232825,
+          "min_s": 0.00107574375,
+          "max_s": 0.00182486875,
+          "all_outputs_byte_equal": true
+        },
+        "upstream_t8": {
+          "threads": 8,
+          "kind": "operator_profile",
+          "samples": 9,
+          "median_s": 0.00041665,
+          "min_s": 0.0004024625,
+          "max_s": 0.0006104625,
+          "all_outputs_byte_equal": true
+        }
+      },
+      "paired_comparisons": {
+        "same_schedule_scalar": {
+          "kind": "unchanged_upstream_control",
+          "candidate_applied": false,
+          "median_latency_ratio": 0.9756061258861775,
+          "min_latency_ratio": 0.7831215112428649,
+          "max_latency_ratio": 2.8887319842771877,
+          "rounds_better_by_5pct": 4,
+          "rounds_worse_by_5pct": 4,
+          "rounds": 9
+        },
+        "pair_shared_unpack": {
+          "kind": "unchanged_upstream_control",
+          "candidate_applied": false,
+          "median_latency_ratio": 1.1353774416331501,
+          "min_latency_ratio": 0.8781723439158545,
+          "max_latency_ratio": 3.4390013102343864,
+          "rounds_better_by_5pct": 3,
+          "rounds_worse_by_5pct": 6,
+          "rounds": 9
+        },
+        "upstream_t1": {
+          "kind": "operator_profile",
+          "candidate_applied": true,
+          "median_latency_ratio": 2.8308523082346535,
+          "min_latency_ratio": 2.5152176744114785,
+          "max_latency_ratio": 4.860626062789124,
+          "rounds_better_by_5pct": 0,
+          "rounds_worse_by_5pct": 9,
+          "rounds": 9
+        },
+        "upstream_t2": {
+          "kind": "operator_profile",
+          "candidate_applied": true,
+          "median_latency_ratio": 1.7203759193680197,
+          "min_latency_ratio": 1.3483138145783555,
+          "max_latency_ratio": 2.236718528562345,
+          "rounds_better_by_5pct": 0,
+          "rounds_worse_by_5pct": 9,
+          "rounds": 9
+        },
+        "upstream_t8": {
+          "kind": "operator_profile",
+          "candidate_applied": true,
+          "median_latency_ratio": 0.5250212315926098,
+          "min_latency_ratio": 0.4687290726452176,
+          "max_latency_ratio": 0.9777764430296114,
+          "rounds_better_by_5pct": 8,
+          "rounds_worse_by_5pct": 0,
+          "rounds": 9
+        }
+      },
+      "planned_payload_bytes": 44197568,
+      "peak_working_set_bytes": 73129984
+    },
+    {
+      "tensor": "blk.3.attn_q.weight",
+      "tensor_sha256": "64825192e7312ffbc1f9f701cceacd319798a9328f5122175d0521a0bbe712d6",
+      "k": 4096,
+      "rows": 8192,
+      "columns": 2,
+      "pair_dispatch": "custom_pair",
+      "output_sha256": "4666bae2505be6a45035b1055b5168fdb77452d1fdf4d94fb82af3081d7ad366",
+      "profiles": {
+        "upstream": {
+          "threads": 4,
+          "kind": "operator_profile",
+          "samples": 9,
+          "median_s": 0.00132890625,
+          "min_s": 0.001134375,
+          "max_s": 0.00180680625,
+          "all_outputs_byte_equal": true
+        },
+        "same_schedule_scalar": {
+          "threads": 4,
+          "kind": "operator_profile",
+          "samples": 9,
+          "median_s": 0.00137741875,
+          "min_s": 0.001132925,
+          "max_s": 0.00158624375,
+          "all_outputs_byte_equal": true
+        },
+        "pair_shared_unpack": {
+          "threads": 4,
+          "kind": "operator_profile",
+          "samples": 9,
+          "median_s": 0.0011739875,
+          "min_s": 0.0010293625,
+          "max_s": 0.00249155625,
+          "all_outputs_byte_equal": true
+        },
+        "upstream_t1": {
+          "threads": 1,
+          "kind": "operator_profile",
+          "samples": 9,
+          "median_s": 0.00396086875,
+          "min_s": 0.003576225,
+          "max_s": 0.01017961875,
+          "all_outputs_byte_equal": true
+        },
+        "upstream_t2": {
+          "threads": 2,
+          "kind": "operator_profile",
+          "samples": 9,
+          "median_s": 0.0023213,
+          "min_s": 0.00200608125,
+          "max_s": 0.00432476875,
+          "all_outputs_byte_equal": true
+        },
+        "upstream_t8": {
+          "threads": 8,
+          "kind": "operator_profile",
+          "samples": 9,
+          "median_s": 0.00094565,
+          "min_s": 0.0007974125,
+          "max_s": 0.00326105,
+          "all_outputs_byte_equal": true
+        }
+      },
+      "paired_comparisons": {
+        "same_schedule_scalar": {
+          "kind": "operator_profile",
+          "candidate_applied": true,
+          "median_latency_ratio": 0.9834309229864785,
+          "min_latency_ratio": 0.762350002940271,
+          "max_latency_ratio": 1.0995519946903074,
+          "rounds_better_by_5pct": 2,
+          "rounds_worse_by_5pct": 2,
+          "rounds": 9
+        },
+        "pair_shared_unpack": {
+          "kind": "operator_profile",
+          "candidate_applied": true,
+          "median_latency_ratio": 0.8569718918131394,
+          "min_latency_ratio": 0.6497583789075336,
+          "max_latency_ratio": 1.8899139545357575,
+          "rounds_better_by_5pct": 6,
+          "rounds_worse_by_5pct": 2,
+          "rounds": 9
+        },
+        "upstream_t1": {
+          "kind": "operator_profile",
+          "candidate_applied": true,
+          "median_latency_ratio": 2.712665038993055,
+          "min_latency_ratio": 2.1921934075665277,
+          "max_latency_ratio": 7.6601481481481475,
+          "rounds_better_by_5pct": 0,
+          "rounds_worse_by_5pct": 9,
+          "rounds": 9
+        },
+        "upstream_t2": {
+          "kind": "operator_profile",
+          "candidate_applied": true,
+          "median_latency_ratio": 1.7328383140926822,
+          "min_latency_ratio": 1.2847531383068882,
+          "max_latency_ratio": 3.254382128159906,
+          "rounds_better_by_5pct": 0,
+          "rounds_worse_by_5pct": 9,
+          "rounds": 9
+        },
+        "upstream_t8": {
+          "kind": "operator_profile",
+          "candidate_applied": true,
+          "median_latency_ratio": 0.7251152529320555,
+          "min_latency_ratio": 0.5664915830714254,
+          "max_latency_ratio": 2.8747548209366394,
+          "rounds_better_by_5pct": 6,
+          "rounds_worse_by_5pct": 3,
+          "rounds": 9
+        }
+      },
+      "planned_payload_bytes": 44354368,
+      "peak_working_set_bytes": 73240576
+    },
+    {
+      "tensor": "blk.3.attn_q.weight",
+      "tensor_sha256": "64825192e7312ffbc1f9f701cceacd319798a9328f5122175d0521a0bbe712d6",
+      "k": 4096,
+      "rows": 8192,
+      "columns": 3,
+      "pair_dispatch": "custom_pair",
+      "output_sha256": "49bc39da19bff680266245d415aebe5451d377b142bacfbbf0b90235e91dc07c",
+      "profiles": {
+        "upstream": {
+          "threads": 4,
+          "kind": "operator_profile",
+          "samples": 9,
+          "median_s": 0.00182123125,
+          "min_s": 0.00158194375,
+          "max_s": 0.00201128125,
+          "all_outputs_byte_equal": true
+        },
+        "same_schedule_scalar": {
+          "threads": 4,
+          "kind": "operator_profile",
+          "samples": 9,
+          "median_s": 0.00202915,
+          "min_s": 0.0015951125,
+          "max_s": 0.0044242875,
+          "all_outputs_byte_equal": true
+        },
+        "pair_shared_unpack": {
+          "threads": 4,
+          "kind": "operator_profile",
+          "samples": 9,
+          "median_s": 0.00203415625,
+          "min_s": 0.0015702625,
+          "max_s": 0.00419843125,
+          "all_outputs_byte_equal": true
+        },
+        "upstream_t1": {
+          "threads": 1,
+          "kind": "operator_profile",
+          "samples": 9,
+          "median_s": 0.0054022625,
+          "min_s": 0.0050091,
+          "max_s": 0.00696270625,
+          "all_outputs_byte_equal": true
+        },
+        "upstream_t2": {
+          "threads": 2,
+          "kind": "operator_profile",
+          "samples": 9,
+          "median_s": 0.00331819375,
+          "min_s": 0.00266724375,
+          "max_s": 0.00596080625,
+          "all_outputs_byte_equal": true
+        },
+        "upstream_t8": {
+          "threads": 8,
+          "kind": "operator_profile",
+          "samples": 9,
+          "median_s": 0.0012838875,
+          "min_s": 0.00105130625,
+          "max_s": 0.003082925,
+          "all_outputs_byte_equal": true
+        }
+      },
+      "paired_comparisons": {
+        "same_schedule_scalar": {
+          "kind": "operator_profile",
+          "candidate_applied": true,
+          "median_latency_ratio": 1.1478472384265643,
+          "min_latency_ratio": 0.9447724673036274,
+          "max_latency_ratio": 2.308095612281828,
+          "rounds_better_by_5pct": 1,
+          "rounds_worse_by_5pct": 6,
+          "rounds": 9
+        },
+        "pair_shared_unpack": {
+          "kind": "operator_profile",
+          "candidate_applied": true,
+          "median_latency_ratio": 1.1988043802784516,
+          "min_latency_ratio": 0.8456963205568814,
+          "max_latency_ratio": 2.1902692233702967,
+          "rounds_better_by_5pct": 1,
+          "rounds_worse_by_5pct": 7,
+          "rounds": 9
+        },
+        "upstream_t1": {
+          "kind": "operator_profile",
+          "candidate_applied": true,
+          "median_latency_ratio": 2.9748024923621688,
+          "min_latency_ratio": 2.4905020120880654,
+          "max_latency_ratio": 3.536635153239068,
+          "rounds_better_by_5pct": 0,
+          "rounds_worse_by_5pct": 9,
+          "rounds": 9
+        },
+        "upstream_t2": {
+          "kind": "operator_profile",
+          "candidate_applied": true,
+          "median_latency_ratio": 1.8152802277166062,
+          "min_latency_ratio": 1.4645277748226646,
+          "max_latency_ratio": 3.3719020244231843,
+          "rounds_better_by_5pct": 0,
+          "rounds_worse_by_5pct": 9,
+          "rounds": 9
+        },
+        "upstream_t8": {
+          "kind": "operator_profile",
+          "candidate_applied": true,
+          "median_latency_ratio": 0.7525156946952128,
+          "min_latency_ratio": 0.6022187349481829,
+          "max_latency_ratio": 1.608323524520944,
+          "rounds_better_by_5pct": 7,
+          "rounds_worse_by_5pct": 2,
+          "rounds": 9
+        }
+      },
+      "planned_payload_bytes": 44511168,
+      "peak_working_set_bytes": 73478144
+    },
+    {
+      "tensor": "blk.3.attn_q.weight",
+      "tensor_sha256": "64825192e7312ffbc1f9f701cceacd319798a9328f5122175d0521a0bbe712d6",
+      "k": 4096,
+      "rows": 8192,
+      "columns": 7,
+      "pair_dispatch": "custom_pair",
+      "output_sha256": "a02190b618fb5489e43920e6ae73e20b3cec1da983e28367d3d9bcfaac733460",
+      "profiles": {
+        "upstream": {
+          "threads": 4,
+          "kind": "operator_profile",
+          "samples": 9,
+          "median_s": 0.0060257875,
+          "min_s": 0.00413203125,
+          "max_s": 0.01191275625,
+          "all_outputs_byte_equal": true
+        },
+        "same_schedule_scalar": {
+          "threads": 4,
+          "kind": "operator_profile",
+          "samples": 9,
+          "median_s": 0.0055946125,
+          "min_s": 0.00431579375,
+          "max_s": 0.0142173,
+          "all_outputs_byte_equal": true
+        },
+        "pair_shared_unpack": {
+          "threads": 4,
+          "kind": "operator_profile",
+          "samples": 9,
+          "median_s": 0.0062996,
+          "min_s": 0.0045370125,
+          "max_s": 0.0117972125,
+          "all_outputs_byte_equal": true
+        },
+        "upstream_t1": {
+          "threads": 1,
+          "kind": "operator_profile",
+          "samples": 9,
+          "median_s": 0.0130219625,
+          "min_s": 0.010512,
+          "max_s": 0.0207882,
+          "all_outputs_byte_equal": true
+        },
+        "upstream_t2": {
+          "threads": 2,
+          "kind": "operator_profile",
+          "samples": 9,
+          "median_s": 0.00738950625,
+          "min_s": 0.00638501875,
+          "max_s": 0.02318081875,
+          "all_outputs_byte_equal": true
+        },
+        "upstream_t8": {
+          "threads": 8,
+          "kind": "operator_profile",
+          "samples": 9,
+          "median_s": 0.00651255,
+          "min_s": 0.00260226875,
+          "max_s": 0.03080215625,
+          "all_outputs_byte_equal": true
+        }
+      },
+      "paired_comparisons": {
+        "same_schedule_scalar": {
+          "kind": "operator_profile",
+          "candidate_applied": true,
+          "median_latency_ratio": 0.973416409988934,
+          "min_latency_ratio": 0.792630068383828,
+          "max_latency_ratio": 1.353961807525052,
+          "rounds_better_by_5pct": 4,
+          "rounds_worse_by_5pct": 4,
+          "rounds": 9
+        },
+        "pair_shared_unpack": {
+          "kind": "operator_profile",
+          "candidate_applied": true,
+          "median_latency_ratio": 0.9694225202930595,
+          "min_latency_ratio": 0.8358720748117984,
+          "max_latency_ratio": 1.4208589130021074,
+          "rounds_better_by_5pct": 2,
+          "rounds_worse_by_5pct": 4,
+          "rounds": 9
+        },
+        "upstream_t1": {
+          "kind": "operator_profile",
+          "candidate_applied": true,
+          "median_latency_ratio": 2.487641275822462,
+          "min_latency_ratio": 1.543386002714527,
+          "max_latency_ratio": 2.631153087327367,
+          "rounds_better_by_5pct": 0,
+          "rounds_worse_by_5pct": 9,
+          "rounds": 9
+        },
+        "upstream_t2": {
+          "kind": "operator_profile",
+          "candidate_applied": true,
+          "median_latency_ratio": 1.4410989801024832,
+          "min_latency_ratio": 0.761535875219317,
+          "max_latency_ratio": 2.4869207966593576,
+          "rounds_better_by_5pct": 2,
+          "rounds_worse_by_5pct": 7,
+          "rounds": 9
+        },
+        "upstream_t8": {
+          "kind": "operator_profile",
+          "candidate_applied": true,
+          "median_latency_ratio": 0.7189152804163184,
+          "min_latency_ratio": 0.3868067203075203,
+          "max_latency_ratio": 6.155258082813386,
+          "rounds_better_by_5pct": 6,
+          "rounds_worse_by_5pct": 3,
+          "rounds": 9
+        }
+      },
+      "planned_payload_bytes": 45138368,
+      "peak_working_set_bytes": 74113024
+    },
+    {
+      "tensor": "blk.3.attn_q.weight",
+      "tensor_sha256": "64825192e7312ffbc1f9f701cceacd319798a9328f5122175d0521a0bbe712d6",
+      "k": 4096,
+      "rows": 8192,
+      "columns": 8,
+      "pair_dispatch": "unchanged_upstream",
+      "output_sha256": "137a3da8aaed731f5823487cde91744c1276cf0fef0f22699b5f7c88395dfdab",
+      "profiles": {
+        "upstream": {
+          "threads": 4,
+          "kind": "operator_profile",
+          "samples": 9,
+          "median_s": 0.0068679,
+          "min_s": 0.0043569,
+          "max_s": 0.0454976,
+          "all_outputs_byte_equal": true
+        },
+        "same_schedule_scalar": {
+          "threads": 4,
+          "kind": "unchanged_upstream_control",
+          "samples": 9,
+          "median_s": 0.0179148,
+          "min_s": 0.0052433,
+          "max_s": 0.0239861,
+          "all_outputs_byte_equal": true
+        },
+        "pair_shared_unpack": {
+          "threads": 4,
+          "kind": "unchanged_upstream_control",
+          "samples": 9,
+          "median_s": 0.0060482,
+          "min_s": 0.0054121,
+          "max_s": 0.0204918,
+          "all_outputs_byte_equal": true
+        },
+        "upstream_t1": {
+          "threads": 1,
+          "kind": "operator_profile",
+          "samples": 9,
+          "median_s": 0.021904,
+          "min_s": 0.0157774,
+          "max_s": 0.0280678,
+          "all_outputs_byte_equal": true
+        },
+        "upstream_t2": {
+          "threads": 2,
+          "kind": "operator_profile",
+          "samples": 9,
+          "median_s": 0.0118081,
+          "min_s": 0.0078523,
+          "max_s": 0.033682,
+          "all_outputs_byte_equal": true
+        },
+        "upstream_t8": {
+          "threads": 8,
+          "kind": "operator_profile",
+          "samples": 9,
+          "median_s": 0.0070397,
+          "min_s": 0.0030672,
+          "max_s": 0.0382547,
+          "all_outputs_byte_equal": true
+        }
+      },
+      "paired_comparisons": {
+        "same_schedule_scalar": {
+          "kind": "unchanged_upstream_control",
+          "candidate_applied": false,
+          "median_latency_ratio": 1.7468512936996754,
+          "min_latency_ratio": 0.11524344141229428,
+          "max_latency_ratio": 5.260340365805518,
+          "rounds_better_by_5pct": 2,
+          "rounds_worse_by_5pct": 7,
+          "rounds": 9
+        },
+        "pair_shared_unpack": {
+          "kind": "unchanged_upstream_control",
+          "candidate_applied": false,
+          "median_latency_ratio": 1.1869160928110882,
+          "min_latency_ratio": 0.12768805387536927,
+          "max_latency_ratio": 2.4618619123707006,
+          "rounds_better_by_5pct": 4,
+          "rounds_worse_by_5pct": 5,
+          "rounds": 9
+        },
+        "upstream_t1": {
+          "kind": "operator_profile",
+          "candidate_applied": true,
+          "median_latency_ratio": 3.3361418075991613,
+          "min_latency_ratio": 0.34677433534955693,
+          "max_latency_ratio": 5.6786920478968375,
+          "rounds_better_by_5pct": 1,
+          "rounds_worse_by_5pct": 8,
+          "rounds": 9
+        },
+        "upstream_t2": {
+          "kind": "operator_profile",
+          "candidate_applied": true,
+          "median_latency_ratio": 1.8022676673781814,
+          "min_latency_ratio": 0.3102801026867351,
+          "max_latency_ratio": 4.046517774547376,
+          "rounds_better_by_5pct": 1,
+          "rounds_worse_by_5pct": 8,
+          "rounds": 9
+        },
+        "upstream_t8": {
+          "kind": "operator_profile",
+          "candidate_applied": true,
+          "median_latency_ratio": 0.7934316235543393,
+          "min_latency_ratio": 0.15472684273456183,
+          "max_latency_ratio": 6.486171316930215,
+          "rounds_better_by_5pct": 6,
+          "rounds_worse_by_5pct": 3,
+          "rounds": 9
+        }
+      },
+      "planned_payload_bytes": 45295168,
+      "peak_working_set_bytes": 73760768
+    },
+    {
+      "tensor": "blk.3.attn_q.weight",
+      "tensor_sha256": "64825192e7312ffbc1f9f701cceacd319798a9328f5122175d0521a0bbe712d6",
+      "k": 4096,
+      "rows": 8192,
+      "columns": 128,
+      "pair_dispatch": "unchanged_upstream",
+      "output_sha256": "bcc63c183a99926f391da313f0d3938af5353750449ba1571508c97658ef21ae",
+      "profiles": {
+        "upstream": {
+          "threads": 4,
+          "kind": "operator_profile",
+          "samples": 9,
+          "median_s": 0.0389078,
+          "min_s": 0.0339313,
+          "max_s": 0.0539123,
+          "all_outputs_byte_equal": true
+        },
+        "same_schedule_scalar": {
+          "threads": 4,
+          "kind": "unchanged_upstream_control",
+          "samples": 9,
+          "median_s": 0.0442337,
+          "min_s": 0.0347232,
+          "max_s": 0.0694475,
+          "all_outputs_byte_equal": true
+        },
+        "pair_shared_unpack": {
+          "threads": 4,
+          "kind": "unchanged_upstream_control",
+          "samples": 9,
+          "median_s": 0.0400483,
+          "min_s": 0.0310222,
+          "max_s": 0.0464861,
+          "all_outputs_byte_equal": true
+        },
+        "upstream_t1": {
+          "threads": 1,
+          "kind": "operator_profile",
+          "samples": 9,
+          "median_s": 0.122634,
+          "min_s": 0.0951473,
+          "max_s": 0.1316204,
+          "all_outputs_byte_equal": true
+        },
+        "upstream_t2": {
+          "threads": 2,
+          "kind": "operator_profile",
+          "samples": 9,
+          "median_s": 0.0666723,
+          "min_s": 0.0552376,
+          "max_s": 0.0855141,
+          "all_outputs_byte_equal": true
+        },
+        "upstream_t8": {
+          "threads": 8,
+          "kind": "operator_profile",
+          "samples": 9,
+          "median_s": 0.0342316,
+          "min_s": 0.0275785,
+          "max_s": 0.0443599,
+          "all_outputs_byte_equal": true
+        }
+      },
+      "paired_comparisons": {
+        "same_schedule_scalar": {
+          "kind": "unchanged_upstream_control",
+          "candidate_applied": false,
+          "median_latency_ratio": 1.1381583637174892,
+          "min_latency_ratio": 0.7406473105395244,
+          "max_latency_ratio": 1.8317740493291166,
+          "rounds_better_by_5pct": 4,
+          "rounds_worse_by_5pct": 5,
+          "rounds": 9
+        },
+        "pair_shared_unpack": {
+          "kind": "unchanged_upstream_control",
+          "candidate_applied": false,
+          "median_latency_ratio": 0.9460093441637748,
+          "min_latency_ratio": 0.7973259860490699,
+          "max_latency_ratio": 1.1358303395390097,
+          "rounds_better_by_5pct": 5,
+          "rounds_worse_by_5pct": 3,
+          "rounds": 9
+        },
+        "upstream_t1": {
+          "kind": "operator_profile",
+          "candidate_applied": true,
+          "median_latency_ratio": 3.179488431625535,
+          "min_latency_ratio": 1.912927656511678,
+          "max_latency_ratio": 3.6335183149481454,
+          "rounds_better_by_5pct": 0,
+          "rounds_worse_by_5pct": 9,
+          "rounds": 9
+        },
+        "upstream_t2": {
+          "kind": "operator_profile",
+          "candidate_applied": true,
+          "median_latency_ratio": 1.5475662977603462,
+          "min_latency_ratio": 1.2571361266352947,
+          "max_latency_ratio": 2.257732448694559,
+          "rounds_better_by_5pct": 0,
+          "rounds_worse_by_5pct": 9,
+          "rounds": 9
+        },
+        "upstream_t8": {
+          "kind": "operator_profile",
+          "candidate_applied": true,
+          "median_latency_ratio": 0.8892715599442785,
+          "min_latency_ratio": 0.5791962131090679,
+          "max_latency_ratio": 1.080014617771792,
+          "rounds_better_by_5pct": 6,
+          "rounds_worse_by_5pct": 1,
+          "rounds": 9
+        }
+      },
+      "planned_payload_bytes": 64111168,
+      "peak_working_set_bytes": 84226048
+    }
+  ]
+}

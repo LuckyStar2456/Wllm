@@ -52,3 +52,17 @@ if(MSVC)
   target_compile_options(wllm-tests PRIVATE /utf-8 /W4)
 endif()
 add_test(NAME wllm-core COMMAND wllm-tests)
+
+# Explicit research target: never linked into the inference executable.
+add_executable(wllm-cpu-kernel-bench EXCLUDE_FROM_ALL
+  experiments/cpu_kernel_bench.cpp experiments/q4_pair.cpp)
+target_link_libraries(wllm-cpu-kernel-bench PRIVATE ggml-cpu bcrypt psapi)
+target_include_directories(wllm-cpu-kernel-bench PRIVATE
+  vendor/llama.cpp/vendor vendor/llama.cpp/ggml/src vendor/llama.cpp/ggml/include)
+target_compile_definitions(wllm-cpu-kernel-bench PRIVATE
+  WLLM_LLAMA_COMMIT="f2918cabbffe8abf8e2a90c1c089085fa116c2cf"
+  WLLM_CPU_TARGET="${WLLM_CPU_TARGET}")
+if(MSVC)
+  target_compile_options(wllm-cpu-kernel-bench PRIVATE /utf-8 /W4)
+  set_source_files_properties(experiments/q4_pair.cpp PROPERTIES COMPILE_OPTIONS "/arch:AVX2")
+endif()
