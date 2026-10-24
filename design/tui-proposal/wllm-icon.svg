@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="512" height="512" role="img" aria-labelledby="title desc">
+  <title id="title">Wllm 折线 W 应用图标提案</title>
+  <desc id="desc">深石墨色圆角底，薄荷青折线组成 W，右端方形节点代表计算路径。待用户确认。</desc>
+  <rect width="64" height="64" rx="14" fill="#151b22"/>
+  <path d="M12 18 22 46 32 29 42 46 52 18" fill="none" stroke="#5ce0bd" stroke-width="6" stroke-linecap="round" stroke-linejoin="round"/>
+  <rect x="48" y="14" width="8" height="8" rx="1.5" fill="#5ce0bd"/>
+</svg>
