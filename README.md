@@ -19,6 +19,20 @@
 
 ## 快速开始
 
+已安装 [Scoop](https://scoop.sh/) 时，添加 Wllm 安装源并安装：
+
+```powershell
+scoop bucket add wllm https://github.com/LuckyStar2456/Wllm
+scoop install wllm/wllm
+wllm --tui --model "D:\Models\qwen3.5-9b-q4_k_m-text.gguf"
+```
+
+后续使用 `scoop update wllm` 升级，`scoop uninstall wllm` 卸载。安装源只需添加一次。也可直接通过远端清单安装：
+
+```powershell
+scoop install https://raw.githubusercontent.com/LuckyStar2456/Wllm/main/bucket/wllm.json
+```
+
 解压 Windows x64 发布包，在 PowerShell 或 CMD 中执行：
 
 ```powershell

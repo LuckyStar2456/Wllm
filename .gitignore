@@ -24,3 +24,4 @@ __pycache__/
 !/scripts/run.ps1
 !/scripts/prepare_model.py
 !/scripts/package.ps1
+!/scripts/update_scoop.ps1

@@ -1,0 +1,34 @@
+{
+  "version": "0.3.0",
+  "description": "Local CPU text inference and Reflex decisions in a terminal",
+  "homepage": "https://github.com/LuckyStar2456/Wllm",
+  "license": "MIT",
+  "architecture": {
+    "64bit": {
+      "url": "https://github.com/LuckyStar2456/Wllm/releases/download/v0.3.0/wllm-0.3.0-windows-x64.zip",
+      "hash": "ea76d7fdadb340805aa9d40967b1e6d538abee8ce10cb80ea0bb312d89385b60"
+    }
+  },
+  "extract_dir": "wllm-0.3.0-windows-x64",
+  "bin": "wllm.exe",
+  "notes": [
+    "Start with: wllm --tui --model \"D:\\Models\\model.gguf\"",
+    "Example files are under: scoop prefix wllm",
+    "Requires an AVX2 CPU. Model weights are supplied separately."
+  ],
+  "checkver": {
+    "github": "https://github.com/LuckyStar2456/Wllm"
+  },
+  "autoupdate": {
+    "architecture": {
+      "64bit": {
+        "url": "https://github.com/LuckyStar2456/Wllm/releases/download/v$version/wllm-$version-windows-x64.zip",
+        "hash": {
+          "url": "$url.sha256",
+          "regex": "^([a-fA-F0-9]{64})"
+        }
+      }
+    },
+    "extract_dir": "wllm-$version-windows-x64"
+  }
+}

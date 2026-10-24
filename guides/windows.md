@@ -2,6 +2,16 @@
 
 ## 启动与模型
 
+使用 Scoop 可直接安装并创建 `wllm` 命令：
+
+```powershell
+scoop bucket add wllm https://github.com/LuckyStar2456/Wllm
+scoop install wllm/wllm
+wllm --tui
+```
+
+`scoop update wllm` 升级，`scoop uninstall wllm` 卸载；`scoop prefix wllm` 显示安装目录，通用示例位于该目录的 `configs` 下。
+
 将 Windows x64 压缩包解压到任意目录，在终端执行：
 
 ```powershell

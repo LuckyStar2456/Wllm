@@ -14,3 +14,5 @@ Keep prompts and model contexts isolated across requests. Changes to precision, 
 Bug reports should include Wllm version, Windows version, CPU, terminal/shell, command or redacted configuration, and steps to reproduce.
 
 Build a Windows distribution with `scripts/package.ps1`. The package contains an explicit file list, dependency notices and a SHA256 manifest. Git tags matching `v*` run the Windows build/check/package workflow and publish its assets as a GitHub Release.
+
+After a release's ZIP and checksum assets are available, run `scripts/update_scoop.ps1` to refresh `bucket/wllm.json` from that release. Commit the resulting version/hash so Scoop clients can update from the repository. The manifest also includes standard Scoop checkver/autoupdate metadata.
