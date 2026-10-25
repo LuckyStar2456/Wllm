@@ -57,6 +57,17 @@ class Console:
 
 
 class ConsoleTests(unittest.TestCase):
+    def test_no_arguments_open_tui_from_empty_directory(self):
+        with tempfile.TemporaryDirectory(prefix="wllm-first-launch-") as folder:
+            console = Console([str(EXE)], folder)
+            try:
+                console.expect("wllm>")
+                console.send("/help", "Show commands")
+                console.send("/exit", "Goodbye")
+                self.assertEqual(list(Path(folder).iterdir()), [])
+            finally:
+                console.close()
+
     def test_banner_editor_commands_resize_paste_and_no_state(self):
         with tempfile.TemporaryDirectory(prefix="wllm-console-") as folder:
             color_env = {k: v for k, v in os.environ.items() if k != "NO_COLOR"}

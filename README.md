@@ -26,9 +26,12 @@ C++ · llama.cpp / ggml · CPU AVX2 · Windows x64
 ```powershell
 scoop bucket add wllm https://github.com/LuckyStar2456/Wllm
 scoop install wllm/wllm
+wllm
 ```
 
-指定自己的 **GGUF 文本模型**，打开终端界面。按模型能力显式设置上下文：
+Scoop 会创建 `wllm` 命令，在 PowerShell 或 CMD 的任意目录输入即可打开终端界面，无需进入安装文件夹。若刚安装 Scoop 后旧终端尚未刷新 PATH，重新打开终端即可。
+
+首次进入后可用 `/model PATH` 选择模型，再输入文字；也可以启动时指定自己的 **GGUF 文本模型**。按模型能力显式设置上下文：
 
 ```powershell
 wllm --tui --model "D:\Models\model.gguf" --context 4096
@@ -39,7 +42,7 @@ wllm --tui --model "D:\Models\model.gguf" --context 4096
 | 获取方式 | 入口 |
 |---|---|
 | Scoop 安装与更新 | 添加一次源，后续 `scoop update wllm`；卸载用 `scoop uninstall wllm` |
-| Windows 压缩包 | [下载发布包](https://github.com/LuckyStar2456/Wllm/releases/latest)，解压后运行 `wllm.exe` |
+| Windows 压缩包 | [下载发布包](https://github.com/LuckyStar2456/Wllm/releases/latest)，解压目录内运行 `.\wllm.exe`；便携版不自动修改 PATH |
 | 从源码构建 | [构建说明](#从源码构建)，依赖由 `dependencies.json` 锁定 |
 
 <details>

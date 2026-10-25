@@ -26,7 +26,7 @@ $manifest = [ordered]@{
     }
     extract_dir = "wllm-$packageVersion-windows-x64"
     bin = 'wllm.exe'
-    notes = @('Start with: wllm --tui --model "D:\Models\model.gguf" --context 4096', 'Example files are under: scoop prefix wllm', 'Requires an AVX2 CPU. Model weights are supplied separately.')
+    notes = @('Run wllm from any terminal directory to open the TUI. Use /model PATH to select a model.', 'Or: wllm --tui --model "D:\Models\model.gguf" --context 4096', 'Example files are under: scoop prefix wllm', 'Requires an AVX2 CPU. Model weights are supplied separately.')
     checkver = [ordered]@{ github = $repository }
     autoupdate = [ordered]@{
         architecture = [ordered]@{

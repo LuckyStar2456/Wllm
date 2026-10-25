@@ -7,17 +7,21 @@
 ```powershell
 scoop bucket add wllm https://github.com/LuckyStar2456/Wllm
 scoop install wllm/wllm
-wllm --tui
+wllm
 ```
+
+安装后可在 PowerShell 或 CMD 的任意目录输入 `wllm`，无参数时直接进入 TUI；不需要进入安装文件夹。刚安装 Scoop 后若旧终端找不到命令，重新打开终端刷新 PATH。`wllm --help` 查看 CLI 参数，`wllm --version` 查看版本。
 
 `scoop update wllm` 升级，`scoop uninstall wllm` 卸载；`scoop prefix wllm` 显示安装目录，通用示例位于该目录的 `configs` 下。
 
 将 Windows x64 压缩包解压到任意目录，在终端执行：
 
 ```powershell
-.\wllm.exe --tui
+.\wllm.exe
 .\wllm.exe --tui --model "D:\Models\model.gguf" --context 4096
 ```
+
+压缩包是便携版，不自动注册全局命令。在其他目录可使用程序的完整路径；希望直接输入 `wllm` 时使用 Scoop 安装，或自行把解压目录加入 PATH。
 
 进入界面后也可使用 `/model PATH` 选择本地 GGUF 文本模型。路径含空格时，`/model` 后可直接输入完整路径或使用双引号。按需 `/load`，或直接提交请求自动加载；`/unload` 释放权重。
 
