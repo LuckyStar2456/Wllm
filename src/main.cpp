@@ -1,4 +1,5 @@
 #define NOMINMAX
+#define WIN32_LEAN_AND_MEAN
 #include <windows.h>
 #include <psapi.h>
 #include <io.h>
@@ -12,6 +13,7 @@
 #include "terminal.h"
 #include "console_ui.h"
 #include "model_profile.h"
+#include "service_protocol.h"
 #include "llama.h"
 #include "llama-ext.h" // WIP allocation query API, bound to the exact dependencies.json commit.
 #include "gguf.h"
@@ -66,6 +68,12 @@ static std::string read_text(const std::string & path) {
     return s;
 }
 
+struct RequestIO {
+    std::vector<common_chat_msg> messages;
+    std::function<bool()> cancel, stopped;
+    std::function<bool(const std::string &)> output;
+};
+
 struct State {
     Terminal terminal;
     Config config;
@@ -80,10 +88,11 @@ struct State {
     bool memory_diagnostic = false;
     std::atomic<bool> timed_out{false};
     std::string cancel_file;
+    const RequestIO * io = nullptr;
     double now() const { return std::chrono::duration<double>(Clock::now() - start).count(); }
     bool cancelled() {
         if (config.timeout_s > 0 && now() >= config.timeout_s) timed_out = true;
-        return interrupted.load() || timed_out.load();
+        return interrupted.load() || timed_out.load() || (io && io->cancel && io->cancel());
     }
     void sample_memory() {
         PROCESS_MEMORY_COUNTERS_EX p{};
@@ -105,10 +114,10 @@ struct State {
             metrics.commit_total = uint64_t(commit.CommitTotal) * commit.PageSize;
             metrics.commit_limit = uint64_t(commit.CommitLimit) * commit.PageSize;
         }
-        IO_COUNTERS io{};
-        if (GetProcessIoCounters(GetCurrentProcess(), &io)) {
+        IO_COUNTERS process_io{};
+        if (GetProcessIoCounters(GetCurrentProcess(), &process_io)) {
             metrics.io_available = true;
-            metrics.io_read_bytes = io.ReadTransferCount; metrics.io_write_bytes = io.WriteTransferCount;
+            metrics.io_read_bytes = process_io.ReadTransferCount; metrics.io_write_bytes = process_io.WriteTransferCount;
         }
     }
 };
@@ -434,8 +443,11 @@ static std::string run(State & s, const std::string & prompt, const std::string 
         inputs.chat_template_kwargs["enable_thinking"]=thinking?"true":"false";
         const std::string effective_system=candidate?candidate->system_prompt(system):system;
         const std::string effective_prompt=candidate?candidate->user_prompt(prompt):prompt;
-        if(!effective_system.empty()) { common_chat_msg msg; msg.role="system"; msg.content=effective_system; inputs.messages.push_back(msg); }
-        common_chat_msg msg; msg.role="user"; msg.content=effective_prompt; inputs.messages.push_back(msg);
+        if(!candidate && s.io && !s.io->messages.empty()) inputs.messages=s.io->messages;
+        else {
+            if(!effective_system.empty()) { common_chat_msg msg; msg.role="system"; msg.content=effective_system; inputs.messages.push_back(msg); }
+            common_chat_msg msg; msg.role="user"; msg.content=effective_prompt; inputs.messages.push_back(msg);
+        }
         if(!candidate) return common_chat_templates_apply(templates.get(),inputs);
         // Ask the native template for a continuation in assistant *content*, not
         // reasoning. No architecture-specific assistant header or think tag.
@@ -447,7 +459,7 @@ static std::string run(State & s, const std::string & prompt, const std::string 
         auto result=common_chat_templates_apply(templates.get(),inputs);
         const auto at=result.prompt.rfind(marker);
         if(at==std::string::npos || at+marker.size()!=result.prompt.size() || result.prompt.find(marker)!=at)
-            throw std::runtime_error("Reflex requires a template with an unambiguous assistant-content continuation boundary");
+            throw std::runtime_error("System One requires a template with an unambiguous assistant-content continuation boundary");
         result.prompt.erase(at);
         return result;
     };
@@ -596,6 +608,7 @@ static std::string run(State & s, const std::string & prompt, const std::string 
             s.terminal.write(piece);
             if (!std::cout) throw std::runtime_error("Output stream failed");
         }
+        if(s.io && s.io->stopped && s.io->stopped()) return "stop";
         if (c.max_tokens>0 && generated>=c.max_tokens) return "max_tokens";
         if (int(tokens.size())+generated>=c.context) return "context_limit";
         set_batch(batch.get(),&token,1,pos++);
@@ -611,9 +624,11 @@ static std::string run(State & s, const std::string & prompt, const std::string 
 }
 
 static void usage() {
-    std::cout << "Wllm 0.4.0 - local CPU inference and Reflex decisions\n"
+    std::cout << "Wllm 0.5.0 - local CPU inference and System One decisions\n"
         "  wllm --config configs/local.json --prompt \"Hello\"\n"
         "  --tui (terminal interface) --ascii (compact banner) --version\n"
+        "  --serve --service all|openai|systemone --host 127.0.0.1 --port 8080\n"
+        "  --model-alias wllm-local --api-key-env ENV_NAME (optional Bearer auth)\n"
         "  --model PATH --context N (default 16384) --threads N --batch N\n"
         "  --raw (exact text completion) --chat-template-file UTF8_JINJA\n"
         "  --threads-batch N (0 = threads) --persistent-threadpool on|off\n"
@@ -646,13 +661,16 @@ public:
 static int execute_request(const Config & config, const std::string & prompt, const std::string & system,
         const std::string & inspect, const std::string & logits_file, const std::string & cancel_file,
         bool quiet, bool profile, bool profile_ops, bool memory_diagnostic, ModelPtr * resident, const CandidateTask * task,
-        bool emit_decision=true, json * decision_out=nullptr, PrefixCache * cache=nullptr, json * presentation=nullptr) {
+        bool emit_decision=true, json * decision_out=nullptr, PrefixCache * cache=nullptr, json * presentation=nullptr,
+        const RequestIO * io=nullptr) {
     State state; state.config=config; state.cancel_file=cancel_file;
+    state.io=io;
+    if(io && io->output) state.terminal.set_writer(io->output);
     state.metrics.prefix_cache_status=config.prefix_cache_mib?"not_started":"disabled";
     PrefixCache pending;
     state.memory_diagnostic=memory_diagnostic;
     state.profile.enabled=profile || profile_ops; state.profile.operators=profile_ops;
-    if(prompt.empty()) throw std::runtime_error("Prompt is empty");
+    if(prompt.empty() && (!io || io->messages.empty())) throw std::runtime_error("Prompt is empty");
     if(!inspect.empty() && !logits_file.empty()) throw std::runtime_error("--inspect cannot be combined with --logits-file");
     if(!cancel_file.empty() && fs::exists(fs::u8path(cancel_file))) throw std::runtime_error("Cancel file already exists; use a new path");
     state.start=Clock::now();
@@ -747,7 +765,8 @@ static int execute_request(const Config & config, const std::string & prompt, co
 }
 
 static int execute_system_one(const Config & config, const std::string & body, const std::string & cancel_file,
-        bool quiet, bool profile, bool profile_ops, bool memory_diagnostic, ModelPtr & resident, PrefixCache * cache, json * response_out=nullptr) {
+        bool quiet, bool profile, bool profile_ops, bool memory_diagnostic, ModelPtr & resident, PrefixCache * cache, json * response_out=nullptr,
+        const RequestIO * io=nullptr, bool emit_response=true) {
     const auto started=Clock::now();
     const auto elapsed=[&] { return std::chrono::duration<double>(Clock::now()-started).count(); };
     const std::string id="systemone-"+std::to_string(std::chrono::duration_cast<std::chrono::microseconds>(started.time_since_epoch()).count())+
@@ -764,7 +783,7 @@ static int execute_system_one(const Config & config, const std::string & body, c
     bool validated=false;
     const auto check_budget=[&] {
         if (!cancel_file.empty() && fs::exists(fs::u8path(cancel_file))) interrupted=true;
-        if (interrupted.load()) { code=130; throw std::runtime_error("System One request cancelled"); }
+        if (interrupted.load() || (io && io->cancel && io->cancel())) { code=130; throw std::runtime_error("System One request cancelled"); }
         if (config.timeout_s>0 && elapsed()>=config.timeout_s) { code=124; throw std::runtime_error("System One request timed out"); }
     };
     try {
@@ -789,7 +808,7 @@ static int execute_system_one(const Config & config, const std::string & body, c
             q.task.protocol_metadata={{"system_one_request_id",id},{"question_id",q.id},{"type",q.type}};
             json decision;
             code=execute_request(effective,request.prompt(),q.system_prompt(),"","",cancel_file,
-                quiet,profile,profile_ops,memory_diagnostic,&resident,&q.task,false,&decision,cache);
+                quiet,profile,profile_ops,memory_diagnostic,&resident,&q.task,false,&decision,cache,nullptr,io);
             if (decision.contains("metrics")) response["usage"]["input_tokens"]=
                 response["usage"]["input_tokens"].get<int>()+decision["metrics"]["input_processed"].get<int>();
             if (code!=0) {
@@ -828,12 +847,13 @@ static int execute_system_one(const Config & config, const std::string & body, c
         response["error"]={{"type","record_error"},{"message",e.what()}};
     }
     if(response_out) *response_out=response;
-    std::cout << response.dump() << '\n' << std::flush;
+    if(emit_response) std::cout << response.dump() << '\n' << std::flush;
     if (cache && (code!=0 || !std::cout)) cache->clear();
     return std::cout?code:1;
 }
 
 #include "console_app.h"
+#include "http_service.h"
 
 static int main_utf8(int argc,char ** argv) {
     std::ios::sync_with_stdio(false);
@@ -849,14 +869,17 @@ static int main_utf8(int argc,char ** argv) {
         }
         std::string prompt,system,inspect,cancel_file,logits_file,logits_directory,resources_file,candidates_file,request_file;
         bool prompt_set=false, quiet=false, interactive=false, profile=false, profile_ops=false, memory_diagnostic=false;
+        bool serve=false, service_flags=false;
+        ServiceOptions service;
         bool tui=argc==1 && console_handle(STD_INPUT_HANDLE) && console_handle(STD_OUTPUT_HANDLE), ascii=false;
         const std::map<std::string,std::string> ints={{"--context","context"},{"--threads","threads"},{"--threads-batch","threads_batch"},{"--batch","batch"},{"--gpu-layers","gpu_layers"},{"--prefix-cache-mib","prefix_cache_mib"},{"--max-tokens","max_tokens"},{"--seed","seed"}};
         const std::map<std::string,std::string> bools={{"--thinking","thinking"},{"--persistent-threadpool","persistent_threadpool"},{"--prefill-last-only","prefill_last_only"},{"--cpu-weight-repacking","cpu_weight_repacking"}};
         for(int i=1;i<argc;++i) {
             const std::string arg=argv[i];
             if(arg=="--help" || arg=="-h") { usage(); return 0; }
-            if(arg=="--version") { std::cout << "Wllm 0.4.0 / CPU " << WLLM_CPU_TARGET << " / llama.cpp " << WLLM_LLAMA_COMMIT << '\n'; return 0; }
+            if(arg=="--version") { std::cout << "Wllm 0.5.0 / CPU " << WLLM_CPU_TARGET << " / llama.cpp " << WLLM_LLAMA_COMMIT << '\n'; return 0; }
             if(arg=="--tui") { tui=true; continue; }
+            if(arg=="--serve") { serve=true; continue; }
             if(arg=="--ascii") { ascii=true; continue; }
             if(arg=="--raw") { settings["raw"]=true; continue; }
             if(arg=="--quiet-metrics") { quiet=true; continue; }
@@ -867,7 +890,15 @@ static int main_utf8(int argc,char ** argv) {
             if(i+1>=argc) throw std::runtime_error("Missing value for " + arg);
             const std::string v=argv[++i];
             if(arg=="--config") continue;
-            if(arg=="--prompt" || arg=="--prompt-file") { if(prompt_set) throw std::runtime_error("Use only one prompt source"); prompt=arg=="--prompt"?v:read_text(v); prompt_set=true; }
+            if(arg=="--service" || arg=="--host" || arg=="--port" || arg=="--model-alias" || arg=="--api-key-env") {
+                service_flags=true;
+                if(arg=="--service") service.type=v;
+                else if(arg=="--host") service.host=v;
+                else if(arg=="--model-alias") service.alias=v;
+                else if(arg=="--api-key-env") service.key_env=v;
+                else { const auto port=json::parse(v); if(!port.is_number_integer() || port<1 || port>65535) throw std::runtime_error("port must be 1..65535"); service.port=port.get<int>(); }
+            }
+            else if(arg=="--prompt" || arg=="--prompt-file") { if(prompt_set) throw std::runtime_error("Use only one prompt source"); prompt=arg=="--prompt"?v:read_text(v); prompt_set=true; }
             else if(arg=="--system") system=v;
             else if(arg=="--model") settings["model"]=v;
             else if(arg=="--chat-template-file") { const auto content=read_text(v); if(content.empty()) throw std::runtime_error("Chat template file is empty"); settings["chat_template"]=content; }
@@ -894,6 +925,14 @@ static int main_utf8(int argc,char ** argv) {
             else throw std::runtime_error("Unknown argument: " + arg);
         }
         const auto config=Config::parse(settings);
+        if(service_flags && !serve) throw std::runtime_error("Service options require --serve");
+        if(serve) {
+            service.validate();
+            if(tui || prompt_set || interactive || !system.empty() || !inspect.empty() || !logits_file.empty() || !logits_directory.empty() || !resources_file.empty() || !cancel_file.empty() || !candidates_file.empty() || !request_file.empty() || profile || profile_ops || memory_diagnostic || ascii)
+                throw std::runtime_error("--serve uses HTTP requests; do not combine with TUI, CLI prompt/mode input or diagnostic options");
+            BackendRuntime backend;
+            return run_http_service(config,service);
+        }
         if (tui) {
             if (!console_handle(STD_INPUT_HANDLE) || !console_handle(STD_OUTPUT_HANDLE) || !console_handle(STD_ERROR_HANDLE))
                 throw std::runtime_error("--tui requires console input/output; use --interactive or --prompt for pipes");

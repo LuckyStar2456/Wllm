@@ -4,6 +4,7 @@
 #include "prefix_cache.h"
 #include "terminal.h"
 #include "model_profile.h"
+#include "service_protocol.h"
 #include <limits>
 #include <iostream>
 #include <functional>
@@ -15,6 +16,34 @@ int main() {
     try {
         require(budget_add(0,UINT64_MAX)==UINT64_MAX,"large model budgets retain all bits");
         require(throws([]{budget_add(UINT64_MAX,1);}),"overflow cannot bypass model memory admission");
+        {
+            ServiceOptions options; options.validate();
+            options.port=0; require(throws([&]{options.validate();}),"service rejects invalid ports");
+            options.port=8080; options.type="other"; require(throws([&]{options.validate();}),"service types are explicit");
+            auto request=json::parse(R"({"model":"local","messages":[{"role":"system","content":"Rules"},{"role":"user","content":"one"},{"role":"assistant","content":"two"},{"role":"user","content":[{"type":"text","text":"three"}]}],"max_completion_tokens":8,"seed":42})");
+            const auto parsed=ServiceGeneration::parse(Config{},request,true);
+            require(parsed.messages.size()==4 && parsed.messages[2].second=="two" && parsed.messages[3].second=="three","HTTP retains all caller supplied text history");
+            require(parsed.config.context==16384 && parsed.config.max_tokens==8 && parsed.config.seed==42,"HTTP preserves context and explicit sampling settings");
+            auto invalid=request; invalid["max_tokens"]=4;
+            require(throws([&]{ServiceGeneration::parse(Config{},invalid,true);}),"HTTP rejects ambiguous output limits");
+            invalid=request; invalid["seed"]=1.5;
+            require(throws([&]{ServiceGeneration::parse(Config{},invalid,true);}),"HTTP cannot truncate fractional integer settings");
+            invalid=request; invalid["tools"]=json::array();
+            require(throws([&]{ServiceGeneration::parse(Config{},invalid,true);}),"unsupported HTTP features are explicit errors");
+            invalid=request; invalid["stream_options"]={{"include_usage",true}};
+            require(throws([&]{ServiceGeneration::parse(Config{},invalid,true);}),"usage streaming options require streaming");
+            const auto raw=ServiceGeneration::parse(Config{},{{"model","local"},{"prompt","hello"}},false);
+            require(raw.config.raw && raw.prompt=="hello","completion endpoint uses native raw text path");
+            std::string output;
+            ServiceText filter({"STOP"},[&](const std::string & piece){output+=piece; return true;});
+            require(filter.write("abcST") && output=="abc" && !filter.stopped(),"partial stop is held across token boundaries");
+            require(filter.write("OPignored") && filter.finish() && output=="abc" && filter.stopped(),"stop text and following bytes are excluded");
+            output.clear(); ServiceText unicode({},[&](const std::string & piece){output+=piece; return true;});
+            require(unicode.write("\xe4\xb8") && output.empty(),"SSE retains split UTF8 characters");
+            require(unicode.write("\xad") && unicode.finish() && output=="\xe4\xb8\xad","SSE emits complete UTF8 characters");
+            output.clear(); ServiceText suffix({"STOP"},[&](const std::string & piece){output+=piece; return true;});
+            require(suffix.write("abcST") && suffix.finish() && output=="abcST","unfinished stop prefix is emitted at the output limit");
+        }
         std::string partial="\xe4\xb8";
         require(console_characters(partial).empty() && partial.size()==2,"partial UTF8 waits for next token");
         partial+="\xad\xf0\x9f\x98\x80";

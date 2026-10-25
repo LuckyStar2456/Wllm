@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.5.0
+
+- HTTP service with selectable `openai`, `systemone` or `all` routes and explicit host/port/model alias.
+- OpenAI-compatible text Chat Completions and Completions, including SSE, usage, request-supplied history and stop sequences.
+- One System One decision API at `/v1/systemone`: business options in `criteria`, structured answers, and the existing choice/noul/score semantics.
+- Unified the public decision feature name as System One; removed the duplicate Reflex API name and endpoint.
+- Shared resident weights, isolated request contexts, one inference slot with 429 backpressure, disconnect cancellation and request deadlines.
+- Optional environment-supplied Bearer authentication; no implicit request or session files.
+
 ## 0.4.0
 
 - Generic GGUF autoregressive text-model entry point using backend capabilities, without Qwen3.5 or Q4_K_M allowlists.

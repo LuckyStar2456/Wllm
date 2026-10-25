@@ -5,6 +5,7 @@
 #endif
 #include <windows.h>
 #include <cstdlib>
+#include <functional>
 #include <iomanip>
 #include <iostream>
 #include <mutex>
@@ -101,6 +102,7 @@ class Terminal {
     std::string captured;
     std::string pending_utf8;
     bool capture = false;
+    std::function<bool(const std::string &)> writer;
     static std::string number(const json & j, const char * key, double divisor = 1) {
         if (j.at(key).is_null()) return "--";
         std::ostringstream out;
@@ -114,6 +116,7 @@ class Terminal {
         status_line = false;
     }
 public:
+    void set_writer(std::function<bool(const std::string &)> output) { writer=std::move(output); }
     bool active() const { return enabled; }
     const std::string & text() const { return captured; }
     void start(bool quiet, bool retain_output = false) {
@@ -130,6 +133,10 @@ public:
         clear_status();
         if(capture) captured += piece;
         streaming = true;
+        if(writer) {
+            if(!writer(piece)) throw std::runtime_error("Output stream failed");
+            return;
+        }
         if(console_handle(STD_OUTPUT_HANDLE)) {
             pending_utf8+=piece;
             const auto chars=console_characters(pending_utf8);

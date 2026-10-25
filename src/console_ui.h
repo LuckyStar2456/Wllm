@@ -22,8 +22,8 @@ inline void show_banner(bool ascii = false) {
             std::cout << '\n';
         }
     }
-    std::cout << "\n :: W-LLM ::  (v0.4.0)\n"
-        " Local CPU inference / Reflex\n"
+    std::cout << "\n :: W-LLM ::  (v0.5.0)\n"
+        " Local CPU inference / System One\n"
         " Independent requests. Settings and input history stay in this process.\n"
         " /help for commands. Enter sends; Shift+Enter adds a line; Ctrl+V pastes.\n\n" << std::flush;
 }

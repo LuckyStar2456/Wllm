@@ -30,7 +30,7 @@ class PublicCliTests(unittest.TestCase):
         self.assertEqual(help_result.returncode, 0)
         self.assertIn("--tui", help_result.stdout)
         self.assertEqual(self.invoke("--version").returncode, 0)
-        self.assertIn("0.4.0", self.invoke("--version").stdout)
+        self.assertIn("0.5.0", self.invoke("--version").stdout)
 
     def test_no_implicit_local_configuration(self):
         with tempfile.TemporaryDirectory() as folder:
@@ -45,7 +45,9 @@ class PublicCliTests(unittest.TestCase):
 
     def test_invalid_input_and_timeout_are_validated(self):
         for args in [("--context", "1"), ("--thinking", "maybe"), ("--mode", "other"),
-                     ("--top-p", "0"), ("--top-k", "1.5"), ("--timeout", "-1")]:
+                     ("--top-p", "0"), ("--top-k", "1.5"), ("--timeout", "-1"),
+                     ("--serve", "--port", "0"), ("--serve", "--service", "other"),
+                     ("--port", "8080"), ("--serve", "--tui")]:
             with self.subTest(args=args):
                 run = self.invoke(*args)
                 self.assertEqual(run.returncode, 1)

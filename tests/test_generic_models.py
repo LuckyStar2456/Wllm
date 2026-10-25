@@ -65,7 +65,7 @@ class GenericModelsTests(unittest.TestCase):
                                        "quantization": profile["quantization"], "context": model["context"],
                                        "weight_bytes": profile["weight_bytes"], "independent_requests": True})
 
-    def test_reflex_and_all_system_one_question_types(self):
+    def test_all_system_one_question_types(self):
         body = json.dumps({"model": "local-selection", "state": {"light": "off", "request": "turn on"}, "questions": {
             "action": {"type": "choice", "instructions": "Select the requested action", "criteria": {"on": "turn on", "off": "turn off"}},
             "needed": {"type": "noul", "instructions": "The light should be turned on"},

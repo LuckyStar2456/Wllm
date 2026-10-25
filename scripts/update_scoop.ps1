@@ -18,7 +18,7 @@ $digest = $Matches[1].ToLowerInvariant()
 if ($asset[0].digest -and $asset[0].digest -ne "sha256:$digest") { throw 'Release asset digest differs from checksum file' }
 $manifest = [ordered]@{
     version = $packageVersion
-    description = 'Local CPU text inference and Reflex decisions in a terminal'
+    description = 'Local CPU text inference and System One decisions in a terminal'
     homepage = $repository
     license = 'MIT'
     architecture = [ordered]@{

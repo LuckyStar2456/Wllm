@@ -1,6 +1,12 @@
 param(
     [string]$Model,
     [switch]$Tui,
+    [switch]$Serve,
+    [ValidateSet('all','openai','systemone')][string]$Service,
+    [string]$BindHost,
+    [ValidateRange(1,65535)][int]$Port,
+    [string]$ModelAlias,
+    [string]$ApiKeyEnv,
     [string]$Prompt,
     [string]$PromptFile,
     [switch]$Raw,
@@ -32,6 +38,10 @@ $params = @()
 if ($Config) { $params += @('--config', $Config) }
 if ($Model) { $params += @('--model', $Model) }
 if ($Tui) { $params += '--tui' }
+if ($Serve) { $params += '--serve' }
+foreach ($entry in @(@('Service','--service'), @('BindHost','--host'), @('Port','--port'), @('ModelAlias','--model-alias'), @('ApiKeyEnv','--api-key-env'))) {
+    if ($PSBoundParameters.ContainsKey($entry[0])) { $params += @($entry[1], $PSBoundParameters[$entry[0]]) }
+}
 if ($Interactive) { $params += '--interactive' }
 if ($Raw) { $params += '--raw' }
 if ($ChatTemplateFile) { $params += @('--chat-template-file', $ChatTemplateFile) }
