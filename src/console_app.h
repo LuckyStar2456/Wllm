@@ -19,20 +19,22 @@ static int run_console_ui(json settings, std::string system, std::string candida
     safe_config(config);
     ModelPtr resident(nullptr,llama_model_free);
     json last=nullptr;
+    json selected_profile=nullptr;
     LineEditor editor;
     show_banner(ascii);
     const auto info=[&] {
+        if(!selected_profile.is_null()) std::cout << " identity " << visible_text(selected_profile.value("name",std::string())) << " / " << visible_text(selected_profile.value("architecture",std::string())) << " / " << visible_text(selected_profile.value("quantization",std::string())) << " / " << visible_text(selected_profile.value("state_kind",std::string())) << '\n';
         std::cout << " model    " << (config.model.empty()?"select with /model PATH":visible_text(config.model)) << '\n'
             << " backend  CPU / " << WLLM_CPU_TARGET << " / threads " << config.threads << ':' << config.effective_threads_batch() << '\n'
-            << " context  " << config.context << " / KV F16 / recurrent F32\n"
-            << " mode     " << config.inference_mode << " / thinking " << (config.inference_mode=="generate" && config.thinking?"on":"off") << '\n'
+            << " context  " << config.context << " / KV F16 / state from model\n"
+            << " mode     " << config.inference_mode << " / thinking " << (config.inference_mode=="generate" && config.thinking && !config.raw?"on":"off") << '\n'
             << " state    " << (resident?"weights loaded":"unloaded") << '\n'
             << " record   " << (config.record.empty()?"off":visible_text(config.record)) << "\n\n";
     };
     const auto help=[] {
         std::cout <<
             " /help                 Show commands and input keys\n"
-            " /model PATH           Select a local Qwen3.5 Q4_K_M text GGUF\n"
+            " /model PATH           Select a local GGUF text model\n"
             " /info                 Model, backend, settings and loaded state\n"
             " /load  /unload        Load or release model weights\n"
             " /mode MODE            generate | candidate_score | system_one\n"
@@ -85,7 +87,7 @@ static int run_console_ui(json settings, std::string system, std::string candida
                     if(arg.empty()) { info(); continue; }
                     auto next=settings; next["model"]=arg;
                     State probe; probe.config=Config::parse(next); preflight(probe,false);
-                    resident.reset(); settings=next; config=probe.config; last=nullptr;
+                    resident.reset(); settings=next; config=probe.config; last=nullptr; selected_profile=probe.identity;
                     std::cout << "Model selected; weights load on request or /load.\n"; info(); continue;
                 }
                 if(command=="/mode") {
@@ -106,7 +108,7 @@ static int run_console_ui(json settings, std::string system, std::string candida
                 if(command=="/unload") { resident.reset(); std::cout << "Model weights released.\n"; continue; }
                 if(command=="/load") {
                     if(resident) { std::cout << "Model weights already loaded.\n"; continue; }
-                    State probe; probe.config=config; preflight(probe);
+                    State probe; probe.config=config; preflight(probe); selected_profile=probe.identity;
                     auto params=llama_model_default_params();
                     params.n_gpu_layers=0; params.load_mode=LLAMA_LOAD_MODE_MMAP; params.use_extra_bufts=false;
                     params.progress_callback=load_progress; params.progress_callback_user_data=&probe;
@@ -140,6 +142,8 @@ static int run_console_ui(json settings, std::string system, std::string candida
                     task?&*task:nullptr,true,nullptr,nullptr,&last);
             }
             interrupted=false;
+            if(last.is_object() && last.contains("model_identity")) selected_profile=last["model_identity"];
+            else if(last.is_object() && last.contains("_wllm") && last["_wllm"].contains("model_identity")) selected_profile=last["_wllm"]["model_identity"];
             std::cout << "\n";
         } catch(const std::exception & e) {
             interrupted=false;

@@ -3,6 +3,9 @@ param(
     [switch]$Tui,
     [string]$Prompt,
     [string]$PromptFile,
+    [switch]$Raw,
+    [string]$ChatTemplateFile,
+    [string]$BuildDirectory = 'build/public',
     [switch]$Interactive,
     [ValidateSet('generate','candidate_score','system_one')][string]$Mode,
     [string]$CandidatesFile,
@@ -22,7 +25,7 @@ param(
 )
 $ErrorActionPreference = 'Stop'
 $projectRoot = Split-Path $PSScriptRoot -Parent
-$exe = Join-Path $projectRoot 'build/public/bin/Release/wllm.exe'
+$exe = Join-Path $projectRoot "$BuildDirectory/bin/Release/wllm.exe"
 if (-not (Test-Path -LiteralPath $exe)) { $exe = Join-Path $projectRoot 'build/bin/Release/wllm.exe' }
 if (-not (Test-Path -LiteralPath $exe)) { throw 'Run scripts/build.ps1 first' }
 $params = @()
@@ -30,6 +33,8 @@ if ($Config) { $params += @('--config', $Config) }
 if ($Model) { $params += @('--model', $Model) }
 if ($Tui) { $params += '--tui' }
 if ($Interactive) { $params += '--interactive' }
+if ($Raw) { $params += '--raw' }
+if ($ChatTemplateFile) { $params += @('--chat-template-file', $ChatTemplateFile) }
 if ($PSBoundParameters.ContainsKey('Mode')) { $params += @('--mode', $Mode) }
 if ($CandidatesFile) { $params += @('--candidates', $CandidatesFile) }
 if ($RequestFile) { $params += @('--request-file', $RequestFile) }

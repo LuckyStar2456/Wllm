@@ -25,7 +25,7 @@ class ModelTests(unittest.TestCase):
                 console.send("/load", "Model weights loaded", timeout=180)
                 offset = len(console.output)
                 console.process.write("Explain prime numbers in detail.\r")
-                console.expect("[Wllm] Q4_K_M", offset=offset)
+                console.expect("[Wllm] CPU", offset=offset)
                 console.process.write("\x03")
                 console.expect("[Wllm cancelled]", offset=offset, timeout=180)
                 console.send("/set max_tokens 4", "Setting applies")

@@ -11,6 +11,7 @@
 #include "profile.h"
 #include "terminal.h"
 #include "console_ui.h"
+#include "model_profile.h"
 #include "llama.h"
 #include "llama-ext.h" // WIP allocation query API, bound to the exact dependencies.json commit.
 #include "gguf.h"
@@ -191,106 +192,49 @@ static void llama_log(ggml_log_level level, const char * text, void * data) {
     if (level >= GGML_LOG_LEVEL_WARN) { std::fputs(text, data ? static_cast<FILE *>(data) : stderr); std::fflush(data ? static_cast<FILE *>(data) : stderr); }
 }
 
-static uint64_t meta_u32(const gguf_context * meta, const std::string & name) {
-    const auto key = gguf_find_key(meta, name.c_str());
-    if (key < 0 || gguf_get_kv_type(meta, key) != GGUF_TYPE_UINT32) throw std::runtime_error("Missing uint32 metadata: " + name);
-    return gguf_get_val_u32(meta, key);
-}
-
 static void preflight(State & s, bool enforce = true) {
-    const auto & c = s.config;
-    if (c.model.empty() || !fs::is_regular_file(fs::u8path(c.model))) throw std::runtime_error("GGUF file not found; set model in config or use --model");
-    gguf_init_params p{}; p.no_alloc = true;
-    std::unique_ptr<gguf_context, decltype(&gguf_free)> meta(gguf_init_from_file(c.model.c_str(), p), gguf_free);
-    if (!meta) throw std::runtime_error("Cannot read GGUF metadata");
-    const auto arch_key = gguf_find_key(meta.get(), "general.architecture");
-    if (arch_key < 0 || gguf_get_kv_type(meta.get(), arch_key) != GGUF_TYPE_STRING ||
-        std::string(gguf_get_val_str(meta.get(), arch_key)) != "qwen35")
-        throw std::runtime_error("Prototype supports qwen35 text GGUF only");
-    if (meta_u32(meta.get(), "general.file_type") != LLAMA_FTYPE_MOSTLY_Q4_K_M)
-        throw std::runtime_error("Prototype baseline requires Q4_K_M; other precisions are not yet validated");
-    const uint64_t train = meta_u32(meta.get(), "qwen35.context_length");
-    if (uint64_t(c.context) > train) throw std::runtime_error("Requested context exceeds model training context");
-    const auto heads_key = gguf_find_key(meta.get(), "qwen35.attention.head_count_kv");
-    const auto interval = meta_u32(meta.get(), "qwen35.full_attention_interval");
-    const auto layers = meta_u32(meta.get(), "qwen35.block_count");
-    if (uint32_t(c.gpu_layers) > layers + 1) throw std::runtime_error("Requested GPU layers exceed this model including its output layer; refusing implicit placement change");
-    if (!interval || layers % interval || gguf_find_key(meta.get(), "qwen35.attention.recurrent_layers") >= 0)
-        throw std::runtime_error("Resource estimate requires the validated qwen35 periodic layer layout");
-    uint64_t heads = 0;
-    if (heads_key < 0) throw std::runtime_error("Missing KV head metadata");
-    if (gguf_get_kv_type(meta.get(), heads_key) == GGUF_TYPE_ARRAY && gguf_get_arr_type(meta.get(), heads_key) == GGUF_TYPE_UINT32) {
-        const auto * a = static_cast<const uint32_t *>(gguf_get_arr_data(meta.get(), heads_key));
-        for (size_t i=0; i<gguf_get_arr_n(meta.get(),heads_key); ++i) heads += a[i];
-    } else {
-        heads = meta_u32(meta.get(), "qwen35.attention.head_count_kv") *
-            (layers / interval);
-    }
-    const uint64_t kv = uint64_t(c.context) * heads * 2 * (meta_u32(meta.get(),"qwen35.attention.key_length") + meta_u32(meta.get(),"qwen35.attention.value_length"));
-    const uint64_t weights = fs::file_size(fs::u8path(c.model));
-    // Match pinned qwen35 single-sequence hybrid memory (F32 conv + F32 recurrent).
-    // Explicit recurrent-layer overrides require a separate estimate rather than guessing.
-    const uint64_t recurrent_layers = layers - layers / interval;
-    const uint64_t conv = meta_u32(meta.get(), "qwen35.ssm.conv_kernel");
-    const uint64_t inner = meta_u32(meta.get(), "qwen35.ssm.inner_size");
-    const uint64_t state = meta_u32(meta.get(), "qwen35.ssm.state_size");
-    const uint64_t groups = meta_u32(meta.get(), "qwen35.ssm.group_count");
-    if (!conv) throw std::runtime_error("Invalid recurrent convolution size");
-    const uint64_t recurrent = recurrent_layers * 4 * ((conv - 1) * (inner + 2 * groups * state) + state * inner);
-    // A conservative admission estimate, not a measured runtime allocation.
-    const uint64_t workspace = 3072ULL << 20;
-    const uint64_t cache_budget = uint64_t(c.prefix_cache_mib) << 20;
-    const uint64_t estimated = weights + kv + recurrent + workspace + cache_budget;
-    MEMORYSTATUSEX m{}; m.dwLength=sizeof(m);
-    if (!GlobalMemoryStatusEx(&m)) throw std::runtime_error("Cannot read system memory budget");
+    const auto & c=s.config;
+    const auto profile=inspect_model(c,load_progress,&s);
+    const auto resources=system_resources();
+    const uint64_t weights=profile.at("weight_bytes").get<uint64_t>();
+    const uint64_t state=profile.at("context_plan_bytes").get<uint64_t>();
+    const uint64_t compute=profile.at("compute_plan_bytes").get<uint64_t>();
+    // Allocator/tokenizer/OS overhead is separate from backend graph buffers.
+    const uint64_t overhead=64ULL<<20, reserve=uint64_t(c.reserve_mib*1048576);
+    const uint64_t cache=uint64_t(c.prefix_cache_mib)<<20;
+    const uint64_t estimated=budget_add(budget_add(weights,state),budget_add(compute,budget_add(overhead,cache)));
+    const uint64_t extra=c.cpu_weight_repacking?weights:0;
+    const uint64_t physical_required=budget_add(estimated,budget_add(extra,reserve));
+    const uint64_t commit_required=budget_add(budget_add(state,compute),budget_add(overhead,budget_add(cache,budget_add(extra,reserve))));
+    std::vector<std::string> reasons;
+    if(physical_required>resources.at("physical_available_bytes").get<uint64_t>()) reasons.push_back("available_physical_below_resident_plan");
+    if(commit_required>resources.at("commit_headroom_bytes").get<uint64_t>()) reasons.push_back("system_commit_headroom_below_plan");
+    if(c.gpu_layers) reasons.push_back("GPU_requires_backend_specific_budget");
+    if(c.cpu_weight_repacking) reasons.push_back("experimental_repacking");
+    if(c.prefix_cache_mib) reasons.push_back("experimental_prefix_cache");
     {
         std::lock_guard<std::mutex> lock(s.mutex);
-        s.identity = {{"architecture","qwen35"},{"quantization","Q4_K_M"},{"weight_bytes",weights},
-            {"kv_estimate_bytes",kv},{"recurrent_estimate_bytes",recurrent},{"working_budget_estimate_bytes",estimated},{"physical_total_bytes",m.ullTotalPhys},
-            {"physical_available_at_admission",m.ullAvailPhys},{"model_context",train},
-            {"llama_commit",WLLM_LLAMA_COMMIT},{"pid",GetCurrentProcessId()}};
-        s.identity["cpu_build"] = WLLM_CPU_TARGET;
-        const auto source_key = gguf_find_key(meta.get(), "wllm.source_sha256");
-        if (source_key >= 0 && gguf_get_kv_type(meta.get(), source_key) == GGUF_TYPE_STRING)
-            s.identity["original_weight_sha256"] = gguf_get_val_str(meta.get(), source_key);
+        s.identity=profile;
+        s.identity["cpu_build"]=WLLM_CPU_TARGET; s.identity["llama_commit"]=WLLM_LLAMA_COMMIT;
+        s.identity["pid"]=GetCurrentProcessId();
+        s.identity["working_budget_estimate_bytes"]=estimated;
+        s.identity["resource_ledger"]={
+            {"estimate_scope","backend CPU graph plan, one sequence; no context or precision fitting"},
+            {"system_at_admission",resources},{"startup_physical_budget_bytes",physical_required},
+            {"additional_commit_budget_bytes",commit_required},{"peaks_calibrated",false},
+            {"performance_preflight_eligible",reasons.empty()},{"performance_rejection_reasons",reasons},
+            {"components",{{"mapped_file_bytes",profile.at("file_bytes")},{"mapped_file_resident_bytes",nullptr},
+                {"model_plan_bytes",weights},{"context_plan_bytes",state},{"compute_plan_bytes",compute},
+                {"runtime_overhead_allowance_bytes",overhead},{"prefix_cache_budget_bytes",cache},
+                {"extra_weight_copy_estimate_bytes",extra},{"system_reserve_bytes",reserve}}}};
     }
-    const uint64_t reserve = uint64_t(c.reserve_mib * 1048576);
-    const auto resources = system_resources();
-    const uint64_t headroom = resources.at("commit_headroom_bytes").get<uint64_t>();
-    const uint64_t additional_copy = c.cpu_weight_repacking ? weights : 0;
-    const uint64_t physical_required = estimated + additional_copy + reserve;
-    const uint64_t commit_required = kv + recurrent + workspace + cache_budget + additional_copy + reserve;
-    std::vector<std::string> reasons;
-    if (c.gpu_layers) reasons.push_back("experimental_vulkan_memory_requires_separate_calibration");
-    if (physical_required > resources.at("physical_available_bytes").get<uint64_t>()) reasons.push_back("available_physical_below_conservative_resident_budget");
-    if (commit_required > headroom) reasons.push_back("system_commit_headroom_below_estimate");
-    if (c.cpu_weight_repacking) reasons.push_back("experimental_repacking_not_numerically_accepted");
-    if (c.prefix_cache_mib) reasons.push_back("prefix_cache_requires_separate_session_calibration");
-    s.identity["resource_ledger"] = {
-        {"estimate_scope", "pinned CPU qwen35, one sequence, explicit prefix budget, no draft/rollback cache"},
-        {"source", "GGUF metadata + pinned llama-hparams.cpp/llama-model.cpp; workspace is a conservative allowance"},
-        {"system_at_admission", resources},
-        {"components", {{"mapped_file_bytes", weights}, {"mapped_file_resident_bytes", nullptr},
-            {"attention_kv_f16_estimate_bytes", kv}, {"recurrent_f32_estimate_bytes", recurrent},
-            {"workspace_allowance_bytes", workspace}, {"workspace_measured_bytes", nullptr},
-            {"extra_weight_copy_estimate_bytes", additional_copy}, {"prefix_cache_bytes", cache_budget ? json(nullptr) : json(0)},
-            {"prefix_cache_budget_bytes",cache_budget},
-            {"draft_bytes", 0}, {"rollback_snapshot_bytes", 0}, {"system_reserve_bytes", reserve}}},
-        {"startup_physical_budget_bytes", physical_required}, {"steady_physical_budget_bytes", physical_required},
-        {"additional_commit_budget_bytes", commit_required}, {"peaks_calibrated", false},
-        {"performance_preflight_eligible", reasons.empty()}, {"performance_rejection_reasons", reasons},
-        {"inference_policy", "performance screening is stricter than ordinary inference; no automatic setting changes"}};
-    if (c.gpu_layers) s.identity["resource_ledger"]["estimate_scope"]="CPU reference estimate only; Vulkan driver/device peaks are not calibrated";
-    if (!enforce) return;
-    if (estimated + reserve > m.ullTotalPhys || kv + recurrent + cache_budget + (512ULL << 20) + reserve > m.ullAvailPageFile || m.ullAvailPhys < reserve) {
-        std::ostringstream error;
-        error << "Insufficient memory budget: estimated weights+KV+recurrent+workspace=" << estimated / 1048576
-              << " MiB, reserve=" << reserve / 1048576 << " MiB, physical total=" << m.ullTotalPhys / 1048576
-              << " MiB, available=" << m.ullAvailPhys / 1048576 << " MiB; requested context=" << c.context
-              << ". No automatic context/precision reduction; close applications or explicitly choose --context.";
-        throw std::runtime_error(error.str());
-    }
-    if (estimated + reserve > m.ullAvailPhys) std::cerr << "[Wllm] Available RAM is below the working-budget estimate; paging may occur. No settings were changed.\n";
+    if(!enforce) return;
+    if(physical_required>resources.at("physical_total_bytes").get<uint64_t>() ||
+        commit_required>resources.at("commit_headroom_bytes").get<uint64_t>() ||
+        resources.at("physical_available_bytes").get<uint64_t>()<reserve)
+        throw std::runtime_error("Insufficient memory budget for selected model/context; No automatic context/precision reduction");
+    if(physical_required>resources.at("physical_available_bytes").get<uint64_t>())
+        std::cerr << "[Wllm] Available RAM is below the resident graph plan; paging may occur. Settings were preserved.\n";
 }
 
 static std::vector<llama_token> tokenize(const llama_vocab * vocab, const std::string & text) {
@@ -353,8 +297,7 @@ static std::vector<int32_t> candidate_tokens(const CandidateTask & task, const l
     return result;
 }
 
-static void assign_system_one_labels(CandidateTask & task, const llama_vocab * vocab) {
-    const std::string boundary="<|im_start|>assistant\n<think>\n\n</think>\n\n";
+static void assign_system_one_labels(CandidateTask & task, const llama_vocab * vocab, const std::string & boundary) {
     const auto prefix=tokenize(vocab,boundary);
     std::vector<std::string> pool;
     const std::string simple="ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
@@ -372,14 +315,15 @@ static void assign_system_one_labels(CandidateTask & task, const llama_vocab * v
         } catch (const std::runtime_error &) {} // This token spelling is not a valid label at this boundary.
     };
     for (const auto & label:pool) add(label);
+    for (const auto & label:pool) add(" "+label);
     for (llama_token token=0;next<task.candidates.size() && token<llama_vocab_n_tokens(vocab);++token) {
         char piece[32];
         const int n=llama_token_to_piece(vocab,token,piece,sizeof(piece),0,false);
         if (n<1 || n>16) continue;
         const std::string label(piece,size_t(n));
         if (std::all_of(label.begin(),label.end(),[](unsigned char ch) {
-            return (ch>='A' && ch<='Z') || (ch>='a' && ch<='z') || (ch>='0' && ch<='9');
-        })) add(label);
+            return ch==' ' || (ch>='A' && ch<='Z') || (ch>='a' && ch<='z') || (ch>='0' && ch<='9');
+        }) && std::any_of(label.begin(),label.end(),[](unsigned char ch){return ch!=' ';})) add(label);
     }
     if (next!=task.candidates.size()) throw std::runtime_error("Not enough validated single-token labels for this model");
 }
@@ -466,60 +410,81 @@ static std::string run(State & s, const std::string & prompt, const std::string 
         throw std::runtime_error("Model load failed; check the GGUF path, format and available memory");
     }
     const llama_vocab * vocab=llama_model_get_vocab(model.get());
+    if(!llama_model_has_decoder(model.get()) || llama_model_has_encoder(model.get()) || llama_model_is_diffusion(model.get()))
+        throw std::runtime_error("Selected model does not provide the autoregressive decoder text execution capability");
     CandidateTask mapped_task;
-    if (task && task->automatic_labels) {
-        mapped_task=*task; assign_system_one_labels(mapped_task,vocab); task=&mapped_task;
+    if(task) { mapped_task=*task; task=&mapped_task; }
+    common_chat_templates_ptr templates;
+    if(!c.raw) {
+        const auto source=llama_model_chat_template(model.get(),nullptr);
+        if(c.chat_template.empty() && (!source || !*source))
+            throw std::runtime_error("GGUF has no chat template; use --raw for completion or --chat-template-file for an explicit Jinja template");
+        templates=common_chat_templates_init(model.get(),c.chat_template);
+    } else if(!system.empty()) throw std::runtime_error("Raw completion accepts the prompt exactly; omit --system or supply a chat template");
+    const auto render=[&](const CandidateTask * candidate) {
+        common_chat_params chat;
+        if(c.raw) { chat.prompt=prompt; return chat; }
+        common_chat_templates_inputs inputs;
+        // The renderer removes explicit edge specials when the tokenizer adds
+        // them, so templates that include BOS do not create a duplicate BOS.
+        inputs.add_bos=llama_vocab_get_add_bos(vocab);
+        inputs.add_eos=llama_vocab_get_add_eos(vocab);
+        const bool thinking=!candidate && c.thinking;
+        inputs.enable_thinking=thinking;
+        inputs.chat_template_kwargs["enable_thinking"]=thinking?"true":"false";
+        const std::string effective_system=candidate?candidate->system_prompt(system):system;
+        const std::string effective_prompt=candidate?candidate->user_prompt(prompt):prompt;
+        if(!effective_system.empty()) { common_chat_msg msg; msg.role="system"; msg.content=effective_system; inputs.messages.push_back(msg); }
+        common_chat_msg msg; msg.role="user"; msg.content=effective_prompt; inputs.messages.push_back(msg);
+        if(!candidate) return common_chat_templates_apply(templates.get(),inputs);
+        // Ask the native template for a continuation in assistant *content*, not
+        // reasoning. No architecture-specific assistant header or think tag.
+        std::string marker="WLLM_CONTENT_BOUNDARY_49F71C";
+        while(effective_prompt.find(marker)!=std::string::npos || effective_system.find(marker)!=std::string::npos) marker+="_";
+        common_chat_msg answer; answer.role="assistant"; answer.content=marker; inputs.messages.push_back(answer);
+        inputs.continue_final_message=COMMON_CHAT_CONTINUATION_CONTENT;
+        inputs.add_generation_prompt=false;
+        auto result=common_chat_templates_apply(templates.get(),inputs);
+        const auto at=result.prompt.rfind(marker);
+        if(at==std::string::npos || at+marker.size()!=result.prompt.size() || result.prompt.find(marker)!=at)
+            throw std::runtime_error("Reflex requires a template with an unambiguous assistant-content continuation boundary");
+        result.prompt.erase(at);
+        return result;
+    };
+    if(task && task->automatic_labels) {
+        const auto initial=render(task);
+        assign_system_one_labels(mapped_task,vocab,initial.prompt);
     }
-    const char * template_src=llama_model_chat_template(model.get(),nullptr);
-    if (!template_src || !*template_src) throw std::runtime_error("GGUF has no chat template; refusing to guess one");
-    auto templates=common_chat_templates_init(model.get(),"");
-    common_chat_templates_inputs inputs;
-    const bool thinking=!task && c.thinking;
-    inputs.enable_thinking=thinking;
-    inputs.chat_template_kwargs["enable_thinking"]=thinking ? "true" : "false";
-    const std::string effective_system=task?task->system_prompt(system):system;
-    const std::string effective_prompt=task?task->user_prompt(prompt):prompt;
-    if (!effective_system.empty()) { common_chat_msg m; m.role="system"; m.content=effective_system; inputs.messages.push_back(m); }
-    common_chat_msg user; user.role="user"; user.content=effective_prompt; inputs.messages.push_back(user);
-    const auto chat=common_chat_templates_apply(templates.get(),inputs);
+    const auto chat=render(task);
     const auto tokens=tokenize(vocab,chat.prompt);
     check_context(int(tokens.size()),c.context,!task);
     std::vector<int32_t> labels;
-    if (task) {
-        const std::string boundary="<|im_start|>assistant\n<think>\n\n</think>\n\n";
-        if (chat.prompt.size()<boundary.size() || chat.prompt.compare(chat.prompt.size()-boundary.size(),boundary.size(),boundary)!=0)
-            throw std::runtime_error("Unverified non-thinking answer boundary; candidate_score requires the recorded Qwen3.5 template");
-        labels=candidate_tokens(*task,vocab,chat.prompt,tokens);
-    }
+    if(task) labels=candidate_tokens(*task,vocab,chat.prompt,tokens);
     {
         std::lock_guard<std::mutex> lock(s.mutex);
         s.metrics.input_total=int(tokens.size());
-        s.identity["template_source"]="GGUF tokenizer.chat_template via upstream Jinja";
-        s.identity["thinking_prompt_suffix"]=chat.generation_prompt;
-        if (task) {
-            s.identity["candidate_task"]=task->manifest();
-            s.identity["candidate_token_ids"]=labels;
+        s.identity["template_source"]=c.raw?"raw_completion":c.chat_template.empty()?"GGUF tokenizer.chat_template":"explicit Jinja override";
+        s.identity["thinking_requested"]=c.thinking;
+        s.identity["generation_prompt"]=chat.generation_prompt;
+        if(task) {
+            s.identity["candidate_task"]=task->manifest(); s.identity["candidate_token_ids"]=labels;
+            s.identity["decision_boundary"]="native assistant-content continuation";
             s.identity["generation_loop_entered"]=false;
         }
     }
     if (!inspect_path.empty()) {
         std::ofstream out(fs::u8path(inspect_path),std::ios::binary);
         if (!out) throw std::runtime_error("Cannot write inspect file");
-        json inspected={{"rendered_prompt",chat.prompt},{"token_ids",tokens},{"template",template_src},{"config",c.dump()}};
+        json inspected={{"rendered_prompt",chat.prompt},{"token_ids",tokens},{"template",c.raw?std::string():common_chat_templates_source(templates.get())},{"config",c.dump()}};
         if (task) {
             inspected["candidate_task"]=task->manifest(); inspected["candidate_token_ids"]=labels;
-            inspected["effective_system"]=effective_system; inspected["effective_user"]=effective_prompt;
+            inspected["effective_system"]=task->system_prompt(system); inspected["effective_user"]=task->user_prompt(prompt);
         }
         out << inspected.dump(2);
         { std::lock_guard<std::mutex> lock(s.mutex); s.metrics.load_end=s.now(); }
         return "inspected";
     }
-    llama_context_params cp=llama_context_default_params();
-    cp.n_ctx=c.context; cp.n_batch=c.batch; cp.n_ubatch=c.batch; cp.n_seq_max=1;
-    cp.n_threads=c.threads; cp.n_threads_batch=c.effective_threads_batch();
-    cp.type_k=GGML_TYPE_F16; cp.type_v=GGML_TYPE_F16;
-    cp.flash_attn_type=LLAMA_FLASH_ATTN_TYPE_DISABLED;
-    cp.offload_kqv=c.gpu_layers>0; cp.op_offload=false; cp.no_perf=false;
+    auto cp=execution_context(c);
     cp.abort_callback=abort_callback; cp.abort_callback_data=&s;
     if (s.profile.operators) { cp.cb_eval=Profile::callback; cp.cb_eval_user_data=&s.profile; }
     std::unique_ptr<llama_context,decltype(&llama_free)> ctx(llama_init_from_model(model.get(),cp),llama_free);
@@ -646,10 +611,11 @@ static std::string run(State & s, const std::string & prompt, const std::string 
 }
 
 static void usage() {
-    std::cout << "Wllm 0.3.0 - local CPU inference and Reflex decisions\n"
+    std::cout << "Wllm 0.4.0 - local CPU inference and Reflex decisions\n"
         "  wllm --config configs/local.json --prompt \"Hello\"\n"
         "  --tui (terminal interface) --ascii (compact banner) --version\n"
         "  --model PATH --context N (default 16384) --threads N --batch N\n"
+        "  --raw (exact text completion) --chat-template-file UTF8_JINJA\n"
         "  --threads-batch N (0 = threads) --persistent-threadpool on|off\n"
         "  --prefill-last-only on|off (skip unused intermediate logits)\n"
         "  --cpu-weight-repacking on|off (experimental CPU weight layout)\n"
@@ -705,7 +671,7 @@ static int execute_request(const Config & config, const std::string & prompt, co
         {"profiling_diagnostic",state.profile.enabled},{"operator_profiling",profile_ops},
         {"cpu_build",WLLM_CPU_TARGET},{"resident_session",resident!=nullptr},
         {"llama_commit",WLLM_LLAMA_COMMIT},{"window_s",2},{"pid",GetCurrentProcessId()}}).dump() << '\n';
-    std::cerr << "[Wllm] Q4_K_M CPU context=" << state.config.context << " thinking=" << (!task && state.config.thinking?"on":"off")
+    std::cerr << "[Wllm] CPU context=" << state.config.context << " thinking=" << (!task && state.config.thinking && !state.config.raw?"on":"off")
               << " mode=" << state.config.inference_mode
               << " cpu_build=" << WLLM_CPU_TARGET
               << " pid=" << GetCurrentProcessId() << " record=" << state.config.record << '\n';
@@ -742,6 +708,10 @@ static int execute_request(const Config & config, const std::string & prompt, co
         if (reason!="selected" && reason!="abstained")
             state.decision={{"schema_version",1},{"mode","candidate_score"},{"route","fast"},{"status",reason},
                 {"selected_candidate_id",nullptr},{"top_candidate_id",nullptr},{"scores",nullptr},{"error",state.metrics.error}};
+        state.decision["model"]=state.identity.value("name",fs::u8path(config.model).stem().u8string());
+        state.decision["model_identity"]=json::object();
+        for(const auto * key:{"name","architecture","quantization","parameter_count","expert_count","model_context","state_kind","file_bytes","shard_count"})
+            if(state.identity.contains(key)) state.decision["model_identity"][key]=state.identity.at(key);
         state.decision["request_id"]=id;
         state.decision["metrics"]=final;
     }
@@ -765,7 +735,7 @@ static int execute_request(const Config & config, const std::string & prompt, co
         record.flush();
         if(!record) { std::cerr << "Metric record write failed\n"; return 1; }
     }
-    if (presentation) *presentation={{"mode",config.inference_mode},{"metrics",final},{"output",state.terminal.text()},{"decision",state.decision}};
+    if (presentation) *presentation={{"mode",config.inference_mode},{"metrics",final},{"output",state.terminal.text()},{"decision",state.decision},{"model_identity",state.identity}};
     if (decision_out) *decision_out=state.decision;
     if (task && inspect.empty() && emit_decision) {
         std::cout << state.decision.dump() << '\n' << std::flush;
@@ -782,7 +752,7 @@ static int execute_system_one(const Config & config, const std::string & body, c
     const auto elapsed=[&] { return std::chrono::duration<double>(Clock::now()-started).count(); };
     const std::string id="systemone-"+std::to_string(std::chrono::duration_cast<std::chrono::microseconds>(started.time_since_epoch()).count())+
         "-"+std::to_string(GetCurrentProcessId());
-    json response={{"model",SystemOneRequest::actual_model},{"answers",json::object()},
+    json response={{"model",config.model.empty()?std::string("wllm-local"):fs::u8path(config.model).stem().u8string()},{"answers",json::object()},
         {"usage",{{"input_tokens",0},{"output_tokens",0}}},
         {"_wllm",{{"request_id",id},{"protocol","typesafe-system-one-text-v1"},
             {"model_path",config.model},
@@ -828,6 +798,8 @@ static int execute_system_one(const Config & config, const std::string & body, c
                 throw std::runtime_error(message);
             }
             check_budget();
+            response["model"]=decision.at("model");
+            response["_wllm"]["model_identity"]=decision.at("model_identity");
             response["answers"][q.id]=system_one_answer(q,decision.at("scores"));
             response["_wllm"]["questions"][q.id]={{"request_id",decision.at("request_id")},{"metrics",decision.at("metrics")},
                 {"template_version",decision.at("template_version")}};
@@ -883,9 +855,10 @@ static int main_utf8(int argc,char ** argv) {
         for(int i=1;i<argc;++i) {
             const std::string arg=argv[i];
             if(arg=="--help" || arg=="-h") { usage(); return 0; }
-            if(arg=="--version") { std::cout << "Wllm 0.3.0 / CPU " << WLLM_CPU_TARGET << " / llama.cpp " << WLLM_LLAMA_COMMIT << '\n'; return 0; }
+            if(arg=="--version") { std::cout << "Wllm 0.4.0 / CPU " << WLLM_CPU_TARGET << " / llama.cpp " << WLLM_LLAMA_COMMIT << '\n'; return 0; }
             if(arg=="--tui") { tui=true; continue; }
             if(arg=="--ascii") { ascii=true; continue; }
+            if(arg=="--raw") { settings["raw"]=true; continue; }
             if(arg=="--quiet-metrics") { quiet=true; continue; }
             if(arg=="--interactive") { interactive=true; continue; }
             if(arg=="--profile") { profile=true; continue; }
@@ -897,6 +870,7 @@ static int main_utf8(int argc,char ** argv) {
             if(arg=="--prompt" || arg=="--prompt-file") { if(prompt_set) throw std::runtime_error("Use only one prompt source"); prompt=arg=="--prompt"?v:read_text(v); prompt_set=true; }
             else if(arg=="--system") system=v;
             else if(arg=="--model") settings["model"]=v;
+            else if(arg=="--chat-template-file") { const auto content=read_text(v); if(content.empty()) throw std::runtime_error("Chat template file is empty"); settings["chat_template"]=content; }
             else if(arg=="--record") settings["record"]=v;
             else if(arg=="--inspect") inspect=v;
             else if(arg=="--logits-file") logits_file=v;
@@ -941,6 +915,7 @@ static int main_utf8(int argc,char ** argv) {
         if (!resources_file.empty()) {
             if (task || prompt_set || interactive || !inspect.empty() || !logits_file.empty() || !logits_directory.empty() || profile || profile_ops || memory_diagnostic || !cancel_file.empty() || !system.empty())
                 throw std::runtime_error("--resources is a standalone probe; do not combine with request/diagnostic options");
+            BackendRuntime backend;
             State state; state.config = config;
             json report = {{"schema_version",1}, {"evidence", "resource probe only; no model execution"},
                 {"unix_time_ms", std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::system_clock::now().time_since_epoch()).count()},

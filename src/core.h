@@ -13,6 +13,8 @@ using json = nlohmann::ordered_json;
 
 struct Config {
     std::string model, record; // Persistence is opt-in via --record.
+    std::string chat_template; // Explicit Jinja override; otherwise use the model metadata.
+    bool raw = false;
     std::string inference_mode = "generate";
     int context = 16384, threads = 4, threads_batch = 0, batch = 128, max_tokens = -1;
     bool persistent_threadpool = false, prefill_last_only = false;
@@ -28,7 +30,7 @@ struct Config {
 
     static Config parse(const json & j) {
         Config c;
-        const auto known = json::parse(R"(["model","record","inference_mode","context","threads","threads_batch","batch","persistent_threadpool","prefill_last_only","cpu_weight_repacking","gpu_layers","prefix_cache_mib","max_tokens","temperature","top_p","min_p","repeat_penalty","presence_penalty","frequency_penalty","top_k","repeat_last_n","refresh_ms","seed","thinking","timeout_s","reserve_mib"])");
+        const auto known = json::parse(R"(["model","record","chat_template","raw","inference_mode","context","threads","threads_batch","batch","persistent_threadpool","prefill_last_only","cpu_weight_repacking","gpu_layers","prefix_cache_mib","max_tokens","temperature","top_p","min_p","repeat_penalty","presence_penalty","frequency_penalty","top_k","repeat_last_n","refresh_ms","seed","thinking","timeout_s","reserve_mib"])");
         if (!j.is_object()) throw std::runtime_error("Configuration must be an object");
         for (const auto * key : {"context","threads","threads_batch","batch","gpu_layers","prefix_cache_mib","max_tokens","top_k","repeat_last_n","refresh_ms","seed"}) {
             if (j.contains(key) && !j.at(key).is_number_integer()) throw std::runtime_error(std::string("Expected integer: ") + key);
@@ -43,7 +45,8 @@ struct Config {
                 throw std::runtime_error("Unknown config key: " + it.key());
         }
 #define READ_FIELD(k) if (j.contains(#k)) j.at(#k).get_to(c.k)
-        READ_FIELD(model); READ_FIELD(record); READ_FIELD(inference_mode); READ_FIELD(context); READ_FIELD(threads);
+        READ_FIELD(model); READ_FIELD(record); READ_FIELD(chat_template); READ_FIELD(raw);
+        READ_FIELD(inference_mode); READ_FIELD(context); READ_FIELD(threads);
         READ_FIELD(threads_batch); READ_FIELD(persistent_threadpool); READ_FIELD(prefill_last_only);
         READ_FIELD(cpu_weight_repacking);
         READ_FIELD(gpu_layers);
@@ -60,6 +63,8 @@ struct Config {
     void validate() const {
         if (inference_mode!="generate" && inference_mode!="candidate_score" && inference_mode!="system_one")
             throw std::runtime_error("inference_mode must be generate, candidate_score or system_one");
+        if(raw && (inference_mode!="generate" || !chat_template.empty()))
+            throw std::runtime_error("Raw text mode requires generate and no chat template override");
         if (inference_mode!="generate" && (gpu_layers || cpu_weight_repacking))
             throw std::runtime_error("Decision modes currently require the validated CPU path with repacking off");
         if (context < 512 || context > 262144) throw std::runtime_error("context must be 512..262144 (default 16384); no automatic shrinking");
@@ -80,8 +85,8 @@ struct Config {
     }
     int effective_threads_batch() const { return threads_batch == 0 ? threads : threads_batch; }
     json dump() const {
-        return {{"model", model}, {"inference_mode",inference_mode},
-            {"effective_thinking",inference_mode=="generate" && thinking},{"sampling_applied",inference_mode=="generate"},
+        return {{"model", model}, {"inference_mode",inference_mode},{"raw",raw},{"chat_template",chat_template},
+            {"effective_thinking",inference_mode=="generate" && thinking && !raw},{"sampling_applied",inference_mode=="generate"},
             {"context", context}, {"threads", threads}, {"batch", batch},
             {"threads_batch", effective_threads_batch()}, {"persistent_threadpool", persistent_threadpool},
             {"prefill_last_only", prefill_last_only},

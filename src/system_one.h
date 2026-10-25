@@ -3,7 +3,7 @@
 
 namespace wllm {
 
-// JSON wire adapter only: the execution model remains the configured local Qwen.
+// JSON wire adapter only: the execution model remains the configured local model.
 struct SystemOneQuestion {
     std::string id, type;
     json instructions, criteria;
@@ -20,7 +20,6 @@ struct SystemOneRequest {
     json state;
     std::string requested_model="wllm-local";
     std::vector<SystemOneQuestion> questions;
-    static constexpr const char * actual_model="wllm-qwen3.5-q4_k_m";
 
     static bool content(const json & v, bool nullable=false) {
         return v.is_string() || v.is_object() || v.is_array() || (nullable && v.is_null());
@@ -38,9 +37,8 @@ struct SystemOneRequest {
             throw std::runtime_error("System One adapter is text-only; image assets are unsupported");
         SystemOneRequest r; r.state=j.at("state");
         if (j.contains("model")) r.requested_model=j.at("model").get<std::string>();
-        if (r.requested_model!="wllm-local" && r.requested_model!=actual_model &&
-            r.requested_model!="jev-latest" && r.requested_model!="jev-1.13.0")
-            throw std::runtime_error("Unknown model alias; use wllm-local (no remote Jev is invoked)");
+        if(r.requested_model.empty() || r.requested_model.size()>256)
+            throw std::runtime_error("model alias must contain 1..256 bytes; execution uses the configured local model");
         for (auto it=j.at(field).begin();it!=j.at(field).end();++it) {
             if (it.key().empty() || !it.value().is_object()) throw std::runtime_error("Each named question must be an object with a nonempty id");
             const auto & q=it.value();

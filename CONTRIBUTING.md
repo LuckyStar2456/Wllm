@@ -16,3 +16,7 @@ Bug reports should include Wllm version, Windows version, CPU, terminal/shell, c
 Build a Windows distribution with `scripts/package.ps1`. The package contains an explicit file list, dependency notices and a SHA256 manifest. Git tags matching `v*` run the Windows build/check/package workflow and publish its assets as a GitHub Release.
 
 After a release's ZIP and checksum assets are available, run `scripts/update_scoop.ps1` to refresh `bucket/wllm.json` from that release. Commit the resulting version/hash so Scoop clients can update from the repository. The manifest also includes standard Scoop checkver/autoupdate metadata.
+
+For cross-model checks, set `WLLM_TEST_MODELS` to a local UTF-8 JSON array containing `path`, `context` and expected `architecture` for each GGUF, then run `test_generic_models.py`. `WLLM_EXE` selects the built executable. Optional `WLLM_TEST_RESULT` writes a local result summary. Supply models from different architectures and precisions; weights and local manifests stay outside commits. The suite covers native metadata/plans, generation, resident-request isolation, all three System One question types, raw completion and explicit template overrides.
+
+`--thinking` is passed to the selected template; it does not add reasoning capabilities to a model. Model support should be reported with exact model files and settings, separately from the backend's available architecture implementations.

@@ -3,6 +3,7 @@
 #include "system_one.h"
 #include "prefix_cache.h"
 #include "terminal.h"
+#include "model_profile.h"
 #include <limits>
 #include <iostream>
 #include <functional>
@@ -12,6 +13,8 @@ static void require(bool ok,const char * name) { ++checks; if(!ok) throw std::ru
 static bool throws(const std::function<void()> & fn) { try { fn(); return false; } catch(...) { return true; } }
 int main() {
     try {
+        require(budget_add(0,UINT64_MAX)==UINT64_MAX,"large model budgets retain all bits");
+        require(throws([]{budget_add(UINT64_MAX,1);}),"overflow cannot bypass model memory admission");
         std::string partial="\xe4\xb8";
         require(console_characters(partial).empty() && partial.size()==2,"partial UTF8 waits for next token");
         partial+="\xad\xf0\x9f\x98\x80";
@@ -20,6 +23,10 @@ int main() {
         require(console_characters(partial).empty(),"terminal control code points filtered");
         partial="\xe4";
         require(console_characters(partial,true)==L"\xfffd" && partial.empty(),"final incomplete character is valid display text");
+        require(Config::parse({{"raw",true}}).raw,"raw completion explicitly selectable");
+        require(!Config::parse({{"raw",true}}).dump()["effective_thinking"].get<bool>(),"raw completion does not claim chat thinking control");
+        require(throws([]{Config::parse({{"raw",true},{"inference_mode","system_one"}});}),"raw mode cannot bypass decision template checks");
+        require(throws([]{Config::parse({{"raw",true},{"chat_template","test"}});}),"raw and template override are mutually exclusive");
         auto c=Config::parse(json::object());
         require(c.context==16384,"16K default");
         require(c.prefix_cache_mib==0,"prefix cache disabled by default");
@@ -105,7 +112,9 @@ int main() {
         bad=spec; bad["candidates"][1]["label"]="A";
         require(throws([&]{CandidateTask::parse(bad);}),"duplicate label rejected");
         bad=spec; bad["candidates"][1]["label"]=" B";
-        require(throws([&]{CandidateTask::parse(bad);}),"label whitespace rejected");
+        require(CandidateTask::parse(bad).candidates[1].label==" B","leading-space labels remain subject to native single-token boundary validation");
+        bad=spec; bad["candidates"][0]["label"]="A\n";
+        require(throws([&]{CandidateTask::parse(bad);}),"label control characters rejected");
         bad=spec; bad["unknown_id"]="missing";
         require(throws([&]{CandidateTask::parse(bad);}),"invalid unknown id rejected");
         bad=spec; bad["fallback"]="reasoning";
@@ -144,7 +153,7 @@ int main() {
         auto invalid_request=request_json; invalid_request["state"]=nullptr;
         require(throws([&]{SystemOneRequest::parse(invalid_request);}),"null state rejected");
         invalid_request=request_json; invalid_request["model"]="arbitrary-model";
-        require(throws([&]{SystemOneRequest::parse(invalid_request);}),"unknown model does not silently change execution");
+        require(SystemOneRequest::parse(invalid_request).requested_model=="arbitrary-model","model alias is recorded without selecting a remote or hardcoded family");
         invalid_request=request_json; invalid_request["assets"]={{"image",{{"type","image"}}}};
         require(throws([&]{SystemOneRequest::parse(invalid_request);}),"vision assets fail explicitly");
         invalid_request=request_json; invalid_request["questions"]["decision_id"]["type"]="box";

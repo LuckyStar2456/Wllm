@@ -37,7 +37,9 @@ struct CandidateTask {
             Candidate c{row.at("id").get<std::string>(),row.at("label").get<std::string>(),row.at("description").get<std::string>()};
             if (c.id.empty() || c.label.empty() || c.description.empty()) throw std::runtime_error("Empty candidate field");
             for (unsigned char ch:c.label)
-                if (ch<=32 || ch==127) throw std::runtime_error("Candidate labels cannot contain whitespace/control bytes");
+                if (ch<32 || ch==127) throw std::runtime_error("Candidate labels cannot contain control bytes");
+            if(std::all_of(c.label.begin(),c.label.end(),[](unsigned char ch){return ch==' ';}))
+                throw std::runtime_error("Candidate label cannot be blank");
             if (!ids.insert(c.id).second || !labels.insert(c.label).second) throw std::runtime_error("Duplicate candidate id or label");
             task.candidates.push_back(std::move(c));
         }

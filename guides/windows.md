@@ -16,12 +16,12 @@ wllm --tui
 
 ```powershell
 .\wllm.exe --tui
-.\wllm.exe --tui --model "D:\Models\qwen3.5-9b-q4_k_m-text.gguf"
+.\wllm.exe --tui --model "D:\Models\model.gguf" --context 4096
 ```
 
-进入界面后也可使用 `/model PATH` 选择 Qwen3.5 Q4_K_M 文本 GGUF。路径含空格时，`/model` 后可直接输入完整路径或使用双引号。按需 `/load`，或直接提交请求自动加载；`/unload` 释放权重。
+进入界面后也可使用 `/model PATH` 选择本地 GGUF 文本模型。路径含空格时，`/model` 后可直接输入完整路径或使用双引号。按需 `/load`，或直接提交请求自动加载；`/unload` 释放权重。
 
-普通生成、Reflex 共用本地引擎。连续请求复用模型权重，每个请求建立独立的推理上下文；输入历史不拼接到模型输入。思考开关、精度、采样及上下文由明确配置决定。默认上下文 16384、思考开启，KV F16、循环状态 F32。
+普通生成、Reflex 共用本地引擎。连续请求复用模型权重，每个请求建立独立的推理上下文；输入历史不拼接到模型输入。思考开关、精度、采样及上下文由明确配置决定。默认上下文 16384、思考开启，KV F16；其他状态由模型架构决定。可用 `/set context 4096` 等命令显式调整上下文，再选择对应模型。思考开关由模型模板解释。
 
 ## 输入和命令
 
@@ -62,11 +62,13 @@ wllm --tui
 .\wllm.exe --model "D:\Models\model.gguf" --prompt "你好" --record run.jsonl
 ```
 
+基础文本补全可使用 `--raw`；自定义聊天模板可使用 `--chat-template-file chat.jinja`。两个选项互斥。
+
 默认不自动读取配置、不创建日志、不保存输入历史。`--config FILE` 显式加载配置，命令行参数覆盖配置。可复制 `configs/default.json` 并填写自己的模型路径。界面中的参数修改只在本进程生效。
 
 生成文本及决策 JSON 写入 stdout；状态、指标与错误写入 stderr。重定向时不输出横幅或终端控制序列。退出码：0 成功，1 请求/配置错误，124 超时，130 取消。`--help` 查看完整参数。
 
-模型文件由使用者提供。符合当前格式的文本 GGUF 可直接选择；Ollama Qwen3.5 容器转换工具见 `scripts/prepare_model.py --help`，工具保留主文本张量原始字节，输出独立文件，原文件只读。
+模型文件由使用者提供。接入方式、分片和模板见[模型接入说明](models.md)。标准 GGUF 文本模型可直接选择；Ollama Qwen3.5 容器转换工具见 `scripts/prepare_model.py --help`，工具保留主文本张量原始字节，输出独立文件，原文件只读。
 
 ## 源码构建
 
@@ -83,7 +85,7 @@ cd Wllm
 
 ## 排查
 
-- 模型路径或格式错误：核对路径、Qwen3.5 文本 GGUF 与 Q4_K_M 格式，使用 `/model` 重新选择。
+- 模型路径或格式错误：核对 GGUF 路径、文件完整性及错误中的架构/上下文信息，使用 `/model` 重新选择。
 - 内存预算不足：释放其他应用占用，或显式选择适合资源的上下文；程序保持用户指定的精度及上下文。
 - 无颜色或块字：使用 `--ascii` 或 `NO_COLOR`；采用支持 Unicode 的等宽终端字体。
 - 从脚本调用：使用 `--prompt`、`--prompt-file` 或 `--interactive`，将 stdout 与 stderr 分开捕获。

@@ -28,10 +28,10 @@ scoop bucket add wllm https://github.com/LuckyStar2456/Wllm
 scoop install wllm/wllm
 ```
 
-指定自己的 **Qwen3.5 Q4_K_M 文本 GGUF**，打开终端界面：
+指定自己的 **GGUF 文本模型**，打开终端界面。按模型能力显式设置上下文：
 
 ```powershell
-wllm --tui --model "D:\Models\qwen3.5-9b-q4_k_m-text.gguf"
+wllm --tui --model "D:\Models\model.gguf" --context 4096
 ```
 
 输入文字并回车即可开始；`/help` 查看命令，`Ctrl+C` 取消当前请求。
@@ -62,12 +62,13 @@ Wllm 将本地文本生成与 **Reflex 候选决策**放在同一个推理引擎
 | 纯终端交互 | 蓝色实心字符横幅、原生滚动、中文编辑、多行粘贴、进程内输入历史 |
 | 本地文本生成 | 流式输出、system 提示词、思考开关、上下文与采样设置 |
 | Reflex 快速决策 | 比较单 token 候选 logits，输出选择、分数或拒答；支持 System One 请求格式 |
-| 模型与参数 | 本地 GGUF 选择、显式加载/释放、权重复用、参数查看与修改 |
+| 通用模型入口 | 由 GGUF 元数据识别架构、词表、精度、分片和原生聊天模板；本地选择、加载/释放与权重复用 |
+| 文本与模板 | 指令模型使用自带模板；基础模型使用 `--raw` 补全；支持显式 Jinja 模板覆盖 |
 | 过程与结果 | 加载/输入处理状态、首 token 或决策耗时、生成速率、token 数与内存摘要 |
 | 执行控制 | 取消、超时、错误后继续操作、显式导出结果 |
 | CLI 集成 | 文本或 JSON 输出、文件输入、stdout/stderr 分离、明确退出码 |
 
-CPU 发行包面向 **Windows x64 / AVX2**，使用者自行提供模型文件。默认上下文 **16384**、思考开启，注意力 KV 为 F16、循环状态为 F32；参数通过显式设置调整。
+CPU 发行包面向 **Windows x64 / AVX2**，使用者自行提供模型文件。默认上下文 **16384**、思考开启，注意力 KV 为 F16，其他状态由模型架构决定；参数通过显式设置调整。模型按文件自带精度执行，使用原生词表和模板；思考开关是否生效由所选模型模板决定。详见[模型接入说明](guides/models.md)。
 
 ## 两种使用方式
 
@@ -128,14 +129,21 @@ wllm --model "D:\Models\model.gguf" --mode system_one --request-file request.jso
 
 ## 测试配置
 
-本版在 **Windows 11 x64 · Intel Core i5-1135G7 · 16GB RAM · CPU AVX2** 配置上测试，模型为 **Qwen3.5-9B Q4_K_M 文本 GGUF，约 5.15 GiB，上下文配置 16384**。
+本版在 **Windows 11 x64 · Intel Core i5-1135G7 · 16GB RAM · CPU AVX2** 配置上测试。
+
+| 实测模型 | 文件大小 | 精度 | 上下文配置 |
+|---|---:|---|---:|
+| Qwen3.5-9B 文本 GGUF | 5.15 GiB | Q4_K_M | 16384 |
+| Qwen2.5-0.5B-Instruct | 644.41 MiB | Q8_0 | 4096 |
+| SmolLM2-135M-Instruct（Llama 架构） | 100.57 / 258.34 MiB | Q4_K_M / F16 | 4096 |
 
 | 范围 | 完成检查 |
 |---|---|
-| 原生组件 | 100 项配置、计量、候选打分、System One 映射与 Unicode 输出检查 |
+| 原生组件 | 107 项配置、计量、候选打分、System One 映射与 Unicode 输出检查 |
 | CLI | 空目录启动、默认无状态文件、显式配置/记录、Unicode 路径、JSON 与重定向 |
 | 终端 | Windows ConPTY、PowerShell/CMD；38/48/80/100 列，横幅、编辑、粘贴、历史、缩放与退出恢复 |
-| 真实模型 | 文本生成、Reflex/System One、权重复用、独立请求、取消恢复与结果导出 |
+| 真实模型 | 跨架构与精度的文本生成、System One 三类题型、权重复用、独立请求；Qwen3.5 的取消恢复与结果导出 |
+| 模板与补全 | 模型原生模板、模板缺失提示、显式 Jinja 覆盖与原始文本补全 |
 | 分发安装 | Scoop 下载、SHA256 校验、解压、命令入口，以及发布包解压启动 |
 
 ## 从源码构建
@@ -156,7 +164,7 @@ cd Wllm
 | 面向使用者 | 面向开发者 |
 |---|---|
 | [Windows 使用说明](guides/windows.md) | [构建、测试与贡献](CONTRIBUTING.md) |
-| [Reflex 与 System One](guides/reflex.md) | [依赖版本](dependencies.json) · [第三方声明](THIRD_PARTY_NOTICES.md) |
+| [模型接入说明](guides/models.md) · [Reflex 与 System One](guides/reflex.md) | [依赖版本](dependencies.json) · [第三方声明](THIRD_PARTY_NOTICES.md) |
 | [默认配置](configs/default.json) · [候选示例](configs/light-switch.candidates.json) | [更新记录](CHANGELOG.md) · [问题反馈](https://github.com/LuckyStar2456/Wllm/issues) |
 
 ## 开源与致谢
