@@ -19,6 +19,7 @@ __pycache__/
 !/tests/test_public.py
 !/tests/test_generic_models.py
 !/tests/test_service.py
+!/tests/test_architectures.py
 !/tests/test_console.py
 !/tests/test_model.py
 /scripts/*

@@ -47,6 +47,8 @@ class GenericModelsTests(unittest.TestCase):
                 self.assertGreater(profile["parameter_count"], 0)
                 self.assertGreater(profile["context_plan_bytes"], 0)
                 self.assertIn("no-allocation", profile["planning_method"])
+                self.assertEqual(len(profile["architecture_contract"]["layers"]), profile["layer_count"])
+                self.assertEqual(profile["architecture_contract"]["state_kind"], profile["state_kind"])
                 record = folder / "one.jsonl"
                 isolated = self.run_request(model, folder, "--prompt", "Hello", "--record", str(record))
                 self.assertTrue(isolated.stdout)

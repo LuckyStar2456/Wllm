@@ -128,7 +128,7 @@ static int run_http_service(const Config & base,const ServiceOptions & options) 
                 };
                 if(sink && input.chat && !chunk(json::array({{{"index",0},{"delta",{{"role","assistant"}}},{"finish_reason",nullptr}}}))) return 499;
                 std::string output;
-                ServiceText text(input.stops,[&](const std::string & piece) {
+                TextStopFilter text(input.stops,[&](const std::string & piece) {
                     if(sink) {
                         json choice={{"index",0},{"finish_reason",nullptr}};
                         if(input.chat) choice["delta"]={{"content",piece}};

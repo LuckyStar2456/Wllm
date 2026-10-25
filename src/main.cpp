@@ -478,6 +478,7 @@ static std::string run(State & s, const std::string & prompt, const std::string 
         s.identity["template_source"]=c.raw?"raw_completion":c.chat_template.empty()?"GGUF tokenizer.chat_template":"explicit Jinja override";
         s.identity["thinking_requested"]=c.thinking;
         s.identity["generation_prompt"]=chat.generation_prompt;
+        s.identity["native_stop_count"]=chat.additional_stops.size();
         if(task) {
             s.identity["candidate_task"]=task->manifest(); s.identity["candidate_token_ids"]=labels;
             s.identity["decision_boundary"]="native assistant-content continuation";
@@ -487,7 +488,8 @@ static std::string run(State & s, const std::string & prompt, const std::string 
     if (!inspect_path.empty()) {
         std::ofstream out(fs::u8path(inspect_path),std::ios::binary);
         if (!out) throw std::runtime_error("Cannot write inspect file");
-        json inspected={{"rendered_prompt",chat.prompt},{"token_ids",tokens},{"template",c.raw?std::string():common_chat_templates_source(templates.get())},{"config",c.dump()}};
+        json inspected={{"rendered_prompt",chat.prompt},{"token_ids",tokens},{"template",c.raw?std::string():common_chat_templates_source(templates.get())},{"config",c.dump()},
+            {"additional_stops",chat.additional_stops},{"architecture_contract",s.identity.at("architecture_contract")}};
         if (task) {
             inspected["candidate_task"]=task->manifest(); inspected["candidate_token_ids"]=labels;
             inspected["effective_system"]=task->system_prompt(system); inspected["effective_user"]=task->user_prompt(prompt);
@@ -588,12 +590,22 @@ static std::string run(State & s, const std::string & prompt, const std::string 
         { std::lock_guard<std::mutex> lock(s.mutex); s.metrics.decision_ready=s.now(); s.decision=std::move(decision); }
         return reason;
     }
+    std::optional<TextStopFilter> native_stop;
+    auto stop_strings=chat.additional_stops;
+    stop_strings.erase(std::remove(stop_strings.begin(),stop_strings.end(),std::string()),stop_strings.end());
+    if(!stop_strings.empty()) native_stop.emplace(std::move(stop_strings),[&](const std::string & piece) {
+        s.terminal.write(piece); return bool(std::cout);
+    });
+    const auto finish_generation=[&](const char * reason) {
+        if(native_stop && !native_stop->finish()) throw std::runtime_error("Output stream failed");
+        return std::string(reason);
+    };
     int generated=0;
     while(true) {
         if (s.cancelled()) return s.timed_out ? "timeout" : "cancelled";
         llama_token token;
         { Profile::Span timer(s.profile,"sample"); token=llama_sampler_sample(sampler.get(),ctx.get(),-1); }
-        if (llama_vocab_is_eog(vocab,token)) return "eos";
+        if (llama_vocab_is_eog(vocab,token)) return finish_generation("eos");
         {
             std::lock_guard<std::mutex> lock(s.mutex);
             s.metrics.token_times.push_back(s.now()); s.metrics.token_ids.push_back(token);
@@ -605,12 +617,14 @@ static std::string run(State & s, const std::string & prompt, const std::string 
             std::string piece;
             if (n>=0) piece.assign(token_buffer,n);
             else { piece.resize(-n); n=llama_token_to_piece(vocab,token,piece.data(),int(piece.size()),0,true); if(n<0) throw std::runtime_error("Token rendering failed"); piece.resize(n); }
-            s.terminal.write(piece);
+            if(native_stop) { if(!native_stop->write(piece)) throw std::runtime_error("Output stream failed"); }
+            else s.terminal.write(piece);
             if (!std::cout) throw std::runtime_error("Output stream failed");
         }
-        if(s.io && s.io->stopped && s.io->stopped()) return "stop";
-        if (c.max_tokens>0 && generated>=c.max_tokens) return "max_tokens";
-        if (int(tokens.size())+generated>=c.context) return "context_limit";
+        if(native_stop && native_stop->stopped()) return "stop";
+        if(s.io && s.io->stopped && s.io->stopped()) return finish_generation("stop");
+        if (c.max_tokens>0 && generated>=c.max_tokens) return finish_generation("max_tokens");
+        if (int(tokens.size())+generated>=c.context) return finish_generation("context_limit");
         set_batch(batch.get(),&token,1,pos++);
         s.profile.phase="decode";
         int rc;
@@ -624,7 +638,7 @@ static std::string run(State & s, const std::string & prompt, const std::string 
 }
 
 static void usage() {
-    std::cout << "Wllm 0.5.0 - local CPU inference and System One decisions\n"
+    std::cout << "Wllm 0.6.0 - local CPU inference and System One decisions\n"
         "  wllm --config configs/local.json --prompt \"Hello\"\n"
         "  --tui (terminal interface) --ascii (compact banner) --version\n"
         "  --serve --service all|openai|systemone --host 127.0.0.1 --port 8080\n"
@@ -728,7 +742,7 @@ static int execute_request(const Config & config, const std::string & prompt, co
                 {"selected_candidate_id",nullptr},{"top_candidate_id",nullptr},{"scores",nullptr},{"error",state.metrics.error}};
         state.decision["model"]=state.identity.value("name",fs::u8path(config.model).stem().u8string());
         state.decision["model_identity"]=json::object();
-        for(const auto * key:{"name","architecture","quantization","parameter_count","expert_count","model_context","state_kind","file_bytes","shard_count"})
+        for(const auto * key:{"name","architecture","quantization","parameter_count","expert_count","model_context","state_kind","file_bytes","shard_count","architecture_contract"})
             if(state.identity.contains(key)) state.decision["model_identity"][key]=state.identity.at(key);
         state.decision["request_id"]=id;
         state.decision["metrics"]=final;
@@ -877,7 +891,7 @@ static int main_utf8(int argc,char ** argv) {
         for(int i=1;i<argc;++i) {
             const std::string arg=argv[i];
             if(arg=="--help" || arg=="-h") { usage(); return 0; }
-            if(arg=="--version") { std::cout << "Wllm 0.5.0 / CPU " << WLLM_CPU_TARGET << " / llama.cpp " << WLLM_LLAMA_COMMIT << '\n'; return 0; }
+            if(arg=="--version") { std::cout << "Wllm 0.6.0 / CPU " << WLLM_CPU_TARGET << " / llama.cpp " << WLLM_LLAMA_COMMIT << '\n'; return 0; }
             if(arg=="--tui") { tui=true; continue; }
             if(arg=="--serve") { serve=true; continue; }
             if(arg=="--ascii") { ascii=true; continue; }

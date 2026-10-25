@@ -24,6 +24,10 @@ static int run_console_ui(json settings, std::string system, std::string candida
     show_banner(ascii);
     const auto info=[&] {
         if(!selected_profile.is_null()) std::cout << " identity " << visible_text(selected_profile.value("name",std::string())) << " / " << visible_text(selected_profile.value("architecture",std::string())) << " / " << visible_text(selected_profile.value("quantization",std::string())) << " / " << visible_text(selected_profile.value("state_kind",std::string())) << '\n';
+        if(selected_profile.is_object() && selected_profile.contains("architecture_contract")) {
+            const auto & contract=selected_profile.at("architecture_contract");
+            std::cout << " structure " << contract.at("feed_forward").get<std::string>() << " / " << contract.at("attention_kinds").dump() << " / " << contract.at("state_kind").get<std::string>() << '\n';
+        }
         std::cout << " model    " << (config.model.empty()?"select with /model PATH":visible_text(config.model)) << '\n'
             << " backend  CPU / " << WLLM_CPU_TARGET << " / threads " << config.threads << ':' << config.effective_threads_batch() << '\n'
             << " context  " << config.context << " / KV F16 / state from model\n"

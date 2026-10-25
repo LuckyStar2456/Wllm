@@ -16,6 +16,10 @@ int main() {
     try {
         require(budget_add(0,UINT64_MAX)==UINT64_MAX,"large model budgets retain all bits");
         require(throws([]{budget_add(UINT64_MAX,1);}),"overflow cannot bypass model memory admission");
+        require(attention_topology(8,8)=="mha" && attention_topology(8,1)=="mqa" && attention_topology(8,2)=="gqa","head topologies use geometry rather than model names");
+        require(attention_topology(0,0)=="none" && attention_topology(8,3)=="other","unusual head layouts are reported without a family gate");
+        check_sliding_semantics(0,0); check_sliding_semantics(32,32);
+        require(throws([]{check_sliding_semantics(32,0);}),"backend cannot silently disable declared sliding attention");
         {
             ServiceOptions options; options.validate();
             options.port=0; require(throws([&]{options.validate();}),"service rejects invalid ports");
@@ -35,13 +39,13 @@ int main() {
             const auto raw=ServiceGeneration::parse(Config{},{{"model","local"},{"prompt","hello"}},false);
             require(raw.config.raw && raw.prompt=="hello","completion endpoint uses native raw text path");
             std::string output;
-            ServiceText filter({"STOP"},[&](const std::string & piece){output+=piece; return true;});
+            TextStopFilter filter({"STOP"},[&](const std::string & piece){output+=piece; return true;});
             require(filter.write("abcST") && output=="abc" && !filter.stopped(),"partial stop is held across token boundaries");
             require(filter.write("OPignored") && filter.finish() && output=="abc" && filter.stopped(),"stop text and following bytes are excluded");
-            output.clear(); ServiceText unicode({},[&](const std::string & piece){output+=piece; return true;});
+            output.clear(); TextStopFilter unicode({},[&](const std::string & piece){output+=piece; return true;});
             require(unicode.write("\xe4\xb8") && output.empty(),"SSE retains split UTF8 characters");
             require(unicode.write("\xad") && unicode.finish() && output=="\xe4\xb8\xad","SSE emits complete UTF8 characters");
-            output.clear(); ServiceText suffix({"STOP"},[&](const std::string & piece){output+=piece; return true;});
+            output.clear(); TextStopFilter suffix({"STOP"},[&](const std::string & piece){output+=piece; return true;});
             require(suffix.write("abcST") && suffix.finish() && output=="abcST","unfinished stop prefix is emitted at the output limit");
         }
         std::string partial="\xe4\xb8";

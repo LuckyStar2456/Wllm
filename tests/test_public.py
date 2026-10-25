@@ -30,7 +30,7 @@ class PublicCliTests(unittest.TestCase):
         self.assertEqual(help_result.returncode, 0)
         self.assertIn("--tui", help_result.stdout)
         self.assertEqual(self.invoke("--version").returncode, 0)
-        self.assertIn("0.5.0", self.invoke("--version").stdout)
+        self.assertIn("0.6.0", self.invoke("--version").stdout)
 
     def test_no_implicit_local_configuration(self):
         with tempfile.TemporaryDirectory() as folder:

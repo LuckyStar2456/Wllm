@@ -26,12 +26,14 @@ jobs:
         run: ./scripts/build.ps1 -BuildDirectory build/public -Jobs 4
       - name: CLI and ConPTY checks
         run: |
-          python -m pip install pywinpty==2.0.15
+          python -m pip install pywinpty==2.0.15 numpy==1.26.4 PyYAML==6.0.3
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           $env:WLLM_EXE = (Resolve-Path build/public/bin/Release/wllm.exe).Path
           python -B -m unittest discover -s tests -p test_public.py -v
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           python -B -m unittest discover -s tests -p test_console.py -v
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          python -B -m unittest discover -s tests -p test_architectures.py -v
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       - name: Package
         run: ./scripts/package.ps1

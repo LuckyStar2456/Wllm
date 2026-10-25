@@ -7,6 +7,8 @@ $env:WLLM_EXE = (Resolve-Path build/public/bin/Release/wllm.exe).Path
 py -3.11 -m unittest discover -s tests -p test_public.py -v
 ```
 
+Architecture conformance uses `numpy==1.26.4`, `PyYAML==6.0.3` and the GGUF writer from the pinned vendor tree. Run `test_architectures.py` after building. It generates tiny random-weight GGUFs and executes their real CPU graphs, including HTTP adapters; it downloads no models. Treat these results as structural coverage, separately from trained-model quality and performance. Production architecture discovery must use backend geometry/tensors, never a model-name allowlist. Internal backend bindings stay confined to `src/architecture.h` and the pinned version.
+
 Terminal tests use Windows ConPTY and `pywinpty==2.0.15`. Install the test dependency into an isolated Python environment, then run `test_console.py` in the same way. Real-model checks accept an explicit model path through `WLLM_TEST_MODEL`.
 
 Keep prompts and model contexts isolated across requests. Changes to precision, sampling, context size or inference behavior should be explicit. Include the configuration, model and checks used when reporting results. Exclude machine-specific configurations, model weights, logs and personal notes from commits.

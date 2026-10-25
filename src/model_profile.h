@@ -3,6 +3,7 @@
 #include "llama.h"
 #include "llama-ext.h"
 #include "gguf.h"
+#include "architecture.h"
 #include <filesystem>
 #include <memory>
 #include <limits>
@@ -91,6 +92,13 @@ inline json inspect_model(const Config & c, llama_progress_callback progress=nul
     if(train>0 && c.context>train) throw std::runtime_error("Requested context exceeds model training context ("+std::to_string(train)+"); choose --context explicitly");
     if(!llama_model_has_decoder(model.get()) || llama_model_has_encoder(model.get()) || llama_model_is_diffusion(model.get()))
         throw std::runtime_error("This execution path requires an autoregressive decoder-only text model; architecture="+architecture);
+    const auto contract=native_architecture_contract(*model);
+    const auto declared_window=model_meta_string(model.get(),(architecture+".attention.sliding_window").c_str());
+    if(!declared_window.empty()) {
+        const auto value=json::parse(declared_window);
+        if(!value.is_number_unsigned()) throw std::runtime_error("Invalid sliding-window metadata");
+        check_sliding_semantics(value.get<uint64_t>(),contract.at("sliding_window").get<uint64_t>());
+    }
     const auto layers=llama_model_n_layer(model.get());
     if(c.gpu_layers>layers+1) throw std::runtime_error("GPU layer count exceeds the selected model");
     auto cp=execution_context(c);
@@ -117,7 +125,8 @@ inline json inspect_model(const Config & c, llama_progress_callback progress=nul
         {"state_kind",hybrid?"hybrid":recurrent?"recurrent":"attention"},{"recurrent_state",hybrid||recurrent?"f32":"not_applicable"},
         {"chat_template_available",!c.chat_template.empty() || (tmpl && *tmpl)},
         {"chat_template_source",!c.chat_template.empty()?"explicit_override":tmpl && *tmpl?"GGUF":"none"},
-        {"plan_buffers",buffers},{"planning_method","backend no-allocation model and context graph"}};
+        {"plan_buffers",buffers},{"planning_method","backend no-allocation model and context graph"},
+        {"architecture_contract",contract}};
     const auto source=model_meta_string(model.get(),"wllm.source_sha256");
     if(!source.empty()) profile["original_weight_sha256"]=source;
     cached_key=key; cached_profile=profile;

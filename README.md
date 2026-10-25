@@ -63,6 +63,7 @@ Wllm 将本地文本生成与 **System One 候选决策**放在同一个推理�
 | 本地文本生成 | 流式输出、system 提示词、思考开关、上下文与采样设置 |
 | System One 快速决策 | 接收业务选项，返回选择、候选分数和置信度；支持 choice、noul、score |
 | 通用模型入口 | 由 GGUF 元数据识别架构、词表、精度、分片和原生聊天模板；本地选择、加载/释放与权重复用 |
+| 架构契约 | 从逐层几何与张量布局描述 Dense、MoE、注意力及混合状态；推理/代码任务共用底层架构 |
 | 文本与模板 | 指令模型使用自带模板；基础模型使用 `--raw` 补全；支持显式 Jinja 模板覆盖 |
 | 过程与结果 | 加载/输入处理状态、首 token 或决策耗时、生成速率、token 数与内存摘要 |
 | 执行控制 | 取消、超时、错误后继续操作、显式导出结果 |
@@ -148,7 +149,8 @@ wllm --model "D:\Models\model.gguf" --mode system_one --request-file request.jso
 
 | 范围 | 完成检查 |
 |---|---|
-| 原生组件 | 121 项配置、计量、候选打分、System One 映射与 Unicode 输出检查 |
+| 原生组件 | 124 项配置、计量、候选打分、System One 映射、架构策略与 Unicode 输出检查 |
+| 架构结构 | 随机权重微型 GGUF 实际执行 MHA/MQA/GQA、MoE/共享专家、MLA 和滑动注意力；核对 logits、请求隔离、专家算子和 HTTP，语言模型实测单列 |
 | CLI | 空目录启动、默认无状态文件、显式配置/记录、Unicode 路径、JSON 与重定向 |
 | 终端 | Windows ConPTY、PowerShell/CMD；38/48/80/100 列，横幅、编辑、粘贴、历史、缩放与退出恢复 |
 | 真实模型 | 跨架构与精度的文本生成、System One 三类题型、权重复用、独立请求；Qwen3.5 的取消恢复与结果导出 |
@@ -156,7 +158,9 @@ wllm --model "D:\Models\model.gguf" --mode system_one --request-file request.jso
 | HTTP 服务 | SmolLM2 Q4_K_M、Qwen2.5 Q8_0：JSON/SSE、三类决策题型、认证、端口冲突、请求隔离、断线/超时恢复与 Ctrl+C 停止；OpenAI Python 2.41.0 客户端对接 |
 | 分发安装 | Scoop 下载、SHA256 校验、解压、命令入口，以及发布包解压启动 |
 
-Qwen3.5-9B 的同配置 CLI/HTTP 固定种子对照中，11 个输入 token、8 个输出 token 与原版本一致。
+v0.5.0 的 Qwen3.5-9B 同配置 CLI/HTTP 固定种子对照中，11 个输入 token、8 个输出 token 与原版本一致。
+
+本轮还完成该 9B / 16K 基线的模板、输入 token、采样和状态配置对照；架构结构检查与真实模型运行记录分别列示。
 
 ## 从源码构建
 

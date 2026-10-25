@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.6.0
+
+- Architecture contracts derived from native per-layer geometry and tensor layouts, shared by generation and System One.
+- Dense, MHA/MQA/GQA, routed/shared MoE, MLA, indexed/sliding attention and recurrent/hybrid structure reporting without model-name allowlists.
+- Refuse backend changes to declared sliding-window semantics; preserve explicit context and precision policies.
+- Honor native template stop strings through the shared CLI/TUI/HTTP generation path, while retaining raw completion behavior.
+- Download-free random-weight architecture checks covering real graph execution, expert operators, prefill logits, request isolation and HTTP adapters.
+
 ## 0.5.0
 
 - HTTP service with selectable `openai`, `systemone` or `all` routes and explicit host/port/model alias.
