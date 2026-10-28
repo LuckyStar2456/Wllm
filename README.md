@@ -1,12 +1,10 @@
 # Wllm
 
-<p align="center">
-  <img src="assets/banner.png" width="640" alt="W-LLM 蓝色立体字符横幅">
-</p>
-
 <div align="center">
 
-**在终端里运行本地模型，生成文本，直接做出决策。**
+**无需训练，让 Windows 上的本地模型直接做分类和动作选择。**
+
+给出请求和候选，System One 直接返回选择与候选分数，省去回答文本生成。
 
 C++ · llama.cpp / ggml · CPU AVX2 · Windows x64
 
@@ -15,44 +13,97 @@ C++ · llama.cpp / ggml · CPU AVX2 · Windows x64
 [![License: MIT](https://img.shields.io/badge/license-MIT-409eff)](LICENSE)
 [![Scoop](https://img.shields.io/badge/Scoop-custom_bucket-255a91)](bucket/wllm.json)
 
-[快速开始](#快速开始) · [功能](#功能) · [System One](#system-one直接返回决策) · [使用文档](#文档) · [下载](https://github.com/LuckyStar2456/Wllm/releases/latest)
+[看效果](#看看-system-one-怎么用) · [首次运行](#快速开始) · [接入应用](#http-服务) · [使用文档](#文档) · [下载](https://github.com/LuckyStar2456/Wllm/releases/latest)
 
 </div>
 
+## 看看 System One 怎么用
+
+例如，你正在给应用添加一个灯光动作选择器：应用提供 `turn_on`、`turn_off`、`clarify` 三个选项，模型根据用户请求返回选项和分数。
+
+![System One 实测结果回放：输入请求，返回动作、候选分数和耗时](assets/system-one-demo.gif)
+
+这是已发布 **v0.6.0、Qwen2.5-0.5B Q8_0、CPU、4096 上下文**的关灯样例实测回放，等待时间经过压缩。数值、配置与同轮三条样例的原始选择见[演示数据](assets/system-one-demo.json)，其中其他请求出现了误判；这里展示接口用法，不作为准确率或加速比评测。
+
+**你负责定义选项，Wllm 返回结果，应用决定如何执行。** 同一种接口也可用于意图分类、任务路由、条件判断和分级评分；Wllm 本身不会执行开灯等外部动作。
+
+| 需要的结果 | System One 的输出 |
+|---|---|
+| 从候选动作中选一个 | `choice`：选项 ID、候选分数与 `confidence` |
+| 判断一个条件是否成立 | `noul`：该条件为真的相对分数 |
+| 按给定等级评分 | `score`：等级分布与期望分数 |
+
+候选分数表示当前候选集合内的相对偏好，`confidence` 也不是经过业务校准的正确率。模型选择、提示和选项描述都会影响判断，应使用实际任务样本验证。
+
 ## 快速开始
 
-通过 [Scoop](https://scoop.sh/) 安装。首次添加 Wllm 安装源：
+需要 **Windows x64 / AVX2 CPU**。以下在 PowerShell 中运行；先通过已安装的 [Scoop](https://scoop.sh/) 获取程序：
 
 ```powershell
 scoop bucket add wllm https://github.com/LuckyStar2456/Wllm
 scoop install wllm/wllm
-wllm
 ```
 
-Scoop 会创建 `wllm` 命令，在 PowerShell 或 CMD 的任意目录输入即可打开终端界面，无需进入安装文件夹。若刚安装 Scoop 后旧终端尚未刷新 PATH，重新打开终端即可。
+没有 Scoop 可用[Windows 发布包](https://github.com/LuckyStar2456/Wllm/releases/latest)：解压并进入程序目录，把后续命令中的 `wllm` 换成 `.\wllm.exe`。Scoop 安装后若找不到命令，重新打开终端。
 
-首次进入后可用 `/model PATH` 选择模型，再输入文字；也可以启动时指定自己的 **GGUF 文本模型**。按模型能力显式设置上下文：
+### 1. 下载一个已验证的小模型
+
+首次可选官方 [Qwen2.5-0.5B-Instruct-GGUF](https://huggingface.co/Qwen/Qwen2.5-0.5B-Instruct-GGUF)，文件为 **`qwen2.5-0.5b-instruct-q8_0.gguf`**（约 644 MiB）。下面固定下载版本，在当前目录创建 `models` 文件夹：
 
 ```powershell
-wllm --tui --model "D:\Models\model.gguf" --context 4096
+New-Item -ItemType Directory -Force .\models | Out-Null
+$modelUrl = 'https://huggingface.co/Qwen/Qwen2.5-0.5B-Instruct-GGUF/resolve/9217f5db79a29953eb74d5343926648285ec7e67/qwen2.5-0.5b-instruct-q8_0.gguf'
+curl.exe --fail --location $modelUrl --output .\models\qwen2.5-0.5b-instruct-q8_0.gguf
 ```
 
-输入文字并回车即可开始；`/help` 查看命令，`Ctrl+C` 取消当前请求。
+下载需要网络，模型准备好后推理在本机执行。这个小模型适合先跑通接口；本机动作选择样例中也出现过误判，不能据此直接接管业务。其他已验证模型见[模型接入说明](guides/models.md#实测文件)。
 
-| 获取方式 | 入口 |
-|---|---|
-| Scoop 安装与更新 | 添加一次源，后续 `scoop update wllm`；卸载用 `scoop uninstall wllm` |
-| Windows 压缩包 | [下载发布包](https://github.com/LuckyStar2456/Wllm/releases/latest)，解压目录内运行 `.\wllm.exe`；便携版不自动修改 PATH |
-| 从源码构建 | [构建说明](#从源码构建)，依赖由 `dependencies.json` 锁定 |
+### 2. 定义请求与候选
+
+复制下面整段命令，将请求保存为 UTF-8 的 `request.json`：
+
+```powershell
+@'
+{
+  "state": {"user_request": "请把客厅的灯关掉"},
+  "questions": {
+    "action": {
+      "type": "choice",
+      "instructions": "根据用户请求选择动作。请求开灯选择 turn_on，请求关灯选择 turn_off，其他请求选择 clarify。",
+      "criteria": {
+        "turn_on": "打开灯",
+        "turn_off": "关闭灯",
+        "clarify": "询问用户以澄清需求"
+      }
+    }
+  }
+}
+'@ | Set-Content -Encoding UTF8 .\request.json
+```
+
+### 3. 运行并读取选择、分数与耗时
+
+```powershell
+$result = wllm --model .\models\qwen2.5-0.5b-instruct-q8_0.gguf --context 4096 --mode system_one --request-file .\request.json --quiet-metrics | ConvertFrom-Json
+$result.answers.action | ConvertTo-Json -Depth 4
+'请求耗时：{0:N3} 秒；生成回答 token：{1}' -f $result._wllm.elapsed_s, $result.usage.output_tokens
+```
+
+结果包含 `choice`、各选项的 `probabilities` 和 `confidence`。候选打分不生成回答文本，因此 `usage.output_tokens` 为 **0**；输入处理仍然需要计算，最终延迟取决于模型、输入和硬件。
+
+修改 `request.json` 的 `state.user_request` 后再次运行，即可测试自己的请求。更多三类题型见[System One 使用说明](guides/systemone.md)和[通用请求示例](configs/system-one.example.json)。
 
 <details>
-<summary>直接通过远端 Scoop 清单安装</summary>
+<summary>模型下载校验、更新与其他安装方式</summary>
+
+上述模型文件 SHA256：`ca59ca7f13d0e15a8cfa77bd17e65d24f6844b554a7b6c12e07a5f89ff76844e`。
 
 ```powershell
-scoop install https://raw.githubusercontent.com/LuckyStar2456/Wllm/main/bucket/wllm.json
+Get-FileHash .\models\qwen2.5-0.5b-instruct-q8_0.gguf -Algorithm SHA256
+scoop update wllm
 ```
 
-这是 Wllm 仓库提供的自建安装源。添加安装源的方式便于后续使用 Scoop 更新。
+直接安装自建 Scoop 清单：`scoop install https://raw.githubusercontent.com/LuckyStar2456/Wllm/main/bucket/wllm.json`。卸载用 `scoop uninstall wllm`；发布包不自动修改 PATH。源码构建见[下文](#从源码构建)。
 
 </details>
 
@@ -64,7 +115,7 @@ Wllm 将本地文本生成与 **System One 候选决策**放在同一个推理�
 |---|---|
 | 纯终端交互 | 蓝色实心字符横幅、原生滚动、中文编辑、多行粘贴、进程内输入历史 |
 | 本地文本生成 | 流式输出、system 提示词、思考开关、上下文与采样设置 |
-| System One 快速决策 | 接收业务选项，返回选择、候选分数和置信度；支持 choice、noul、score |
+| System One 候选决策 | 接收业务选项，返回选择、候选相对分数和 confidence；支持 choice、noul、score |
 | 通用模型入口 | 由 GGUF 元数据识别架构、词表、精度、分片和原生聊天模板；本地选择、加载/释放与权重复用 |
 | 架构契约 | 从逐层几何与张量布局描述 Dense、MoE、注意力及混合状态；推理/代码任务共用底层架构 |
 | 文本与模板 | 指令模型使用自带模板；基础模型使用 `--raw` 补全；支持显式 Jinja 模板覆盖 |
@@ -97,41 +148,26 @@ wllm --model "D:\Models\model.gguf" --prompt-file prompt.txt --max-tokens 128
 
 ## HTTP 服务
 
-```powershell
-wllm --serve --service all --port 8080 --model "D:\Models\model.gguf" --context 4096
-```
-
-通用客户端使用 `http://127.0.0.1:8080/v1`，模型名 `wllm-local`；文本生成使用 `/v1/chat/completions`，决策请求使用 `/v1/systemone`。可用 `--service openai` 或 `--service systemone` 单独开放对应接口。详见[服务与请求协议](guides/service.md)。
-
-## System One：直接返回决策
-
-System One 在处理输入后比较候选，直接返回结构化结果。它与普通生成共用本地模型加载、CPU 执行和资源管理。
-
-| 模式 | 输入 | 输出 |
-|---|---|---|
-| `candidate_score` | 待判断文本 + 候选 JSON | 候选分数、选择或拒答 |
-| `system_one` | `state` + `questions` | 具名 `answers`；支持 choice、noul、score |
+把同一份请求接入应用。先在一个终端启动本地服务，权重在请求之间常驻：
 
 ```powershell
-wllm --model "D:\Models\model.gguf" --mode system_one --request-file request.json
+wllm --serve --service systemone --host 127.0.0.1 --port 8080 --model .\models\qwen2.5-0.5b-instruct-q8_0.gguf --context 4096
 ```
 
-请求示例：
+在另一个终端进入 `request.json` 所在目录，发送刚才的请求：
 
-```json
-{
-  "state": {"user_request": "请把客厅的灯打开"},
-  "questions": {
-    "action": {
-      "type": "choice",
-      "instructions": "根据状态选择动作。",
-      "criteria": {"turn_on": "打开灯", "turn_off": "关闭灯"}
-    }
-  }
-}
+```powershell
+$response = Invoke-RestMethod -Uri 'http://127.0.0.1:8080/v1/systemone' -Method Post -ContentType 'application/json; charset=utf-8' -Body ([IO.File]::ReadAllBytes((Join-Path $PWD 'request.json')))
+$response.answers.action | ConvertTo-Json -Depth 4
 ```
 
-查看 [System One 使用说明](guides/systemone.md)和[通用请求示例](configs/system-one.example.json)。Scoop 用户可用 `scoop prefix wllm` 找到安装目录中的 `configs` 示例。
+`--service all` 同时开放文本生成与决策；通用文本客户端使用 Base URL `http://127.0.0.1:8080/v1` 和模型名 `wllm-local`。支持的 OpenAI 兼容字段、SSE、认证与错误处理见[服务说明](guides/service.md)。`Ctrl+C` 停止服务并释放模型。
+
+## 性能与判断质量
+
+System One 的确定性变化是**省去回答文本生成，直接读取候选分数并返回结构化结果**。与“让模型生成一个动作名，再解析文本”的方案相比，实际节省多少时间、是否保持判断质量，需要在同模型、同任务上测量；目前没有可公开复现的配对基准，因此不公布加速倍数或业务正确率。
+
+衡量自己的场景时，固定模型文件与候选、任务集、上下文和线程配置；分别记录冷启动与常驻请求的端到端延迟、峰值内存、正确/错误数，并保留无法判断的样本。模型能力、候选集合和描述改变后重新评估。下面的测试范围说明执行与接口验证，不能替代业务质量评测。
 
 ## 默认无状态
 

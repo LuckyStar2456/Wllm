@@ -1,0 +1,81 @@
+{
+  "recorded_on": "2026-10-28",
+  "version": "0.6.0",
+  "hardware": "Windows 11 x64 / Intel Core i5-1135G7 / 16GB RAM / CPU AVX2",
+  "model": "Qwen2.5-0.5B-Instruct Q8_0",
+  "model_revision": "9217f5db79a29953eb74d5343926648285ec7e67",
+  "model_sha256": "ca59ca7f13d0e15a8cfa77bd17e65d24f6844b554a7b6c12e07a5f89ff76844e",
+  "exe_sha256": "bb24bf8066049961d38355cbd09e24b1da4d925314bda8ea4acfb330d93c9e5b",
+  "package_sha256": "9f8592b2f45b0066beb800ae44dbbbbdba7c9caf534942605928b28e079ceb06",
+  "settings": {
+    "context": 4096,
+    "threads": 4,
+    "threads_batch": 4,
+    "batch": 128
+  },
+  "scope": "Three independent CLI examples, each including model loading; not a benchmark or accuracy estimate.",
+  "animation": "Visual replay of the turn_off example; waiting time compressed. Not a screen recording.",
+  "request": {
+    "state": {
+      "user_request": "请把客厅的灯关掉"
+    },
+    "questions": {
+      "action": {
+        "type": "choice",
+        "instructions": "根据用户请求选择动作。请求开灯选择 turn_on，请求关灯选择 turn_off，其他请求选择 clarify。",
+        "criteria": {
+          "turn_on": "打开灯",
+          "turn_off": "关闭灯",
+          "clarify": "询问用户以澄清需求"
+        }
+      }
+    }
+  },
+  "examples": [
+    {
+      "request": "请把客厅的灯打开",
+      "expected": "turn_on",
+      "choice": "turn_off",
+      "probabilities": {
+        "turn_on": 0.41795601353762557,
+        "turn_off": 0.5739408327553667,
+        "clarify": 0.008103153707007638
+      },
+      "elapsed_s": 17.9022813,
+      "usage": {
+        "input_tokens": 182,
+        "output_tokens": 0
+      }
+    },
+    {
+      "request": "请把客厅的灯关掉",
+      "expected": "turn_off",
+      "choice": "turn_off",
+      "probabilities": {
+        "turn_on": 0.09219023245247183,
+        "turn_off": 0.9017982612245291,
+        "clarify": 0.006011506322999088
+      },
+      "elapsed_s": 2.2371126,
+      "usage": {
+        "input_tokens": 183,
+        "output_tokens": 0
+      }
+    },
+    {
+      "request": "请播放音乐",
+      "expected": "clarify",
+      "choice": "turn_off",
+      "probabilities": {
+        "turn_on": 0.1395130331398134,
+        "turn_off": 0.8229350366123472,
+        "clarify": 0.037551930247839344
+      },
+      "elapsed_s": 1.9280108,
+      "usage": {
+        "input_tokens": 179,
+        "output_tokens": 0
+      }
+    }
+  ]
+}
